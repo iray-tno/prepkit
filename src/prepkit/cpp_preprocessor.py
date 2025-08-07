@@ -51,8 +51,6 @@ def topological_sort(graph, in_degree, all_files):
     else:
         return None
 
-# Removed get_tokens_without_comments as it will no longer be used for output generation
-
 @click.group()
 def cpp():
     """C++ preprocessor and minifier."""
@@ -162,3 +160,29 @@ def preprocess(file, include_paths):
 def minify(file):
     """Minifies a C++ file."""
     click.echo(f"Minifying {file}")
+    temp_file_path = "temp_minify.cpp"
+    with open(file, "r") as f:
+        content = f.read()
+    with open(temp_file_path, "w") as f:
+        f.write(content)
+
+    # Aggressive clang-format style for minification
+    minify_style = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
+
+    # Remove comments using regex
+    content = re.sub(r'//.*\n', '\n', content)  # Single-line comments
+    content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)  # Multi-line comments
+
+    with open(temp_file_path, "w") as f:
+        f.write(content)
+
+    subprocess.run(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
+
+    # Remove all newlines and extra spaces
+    with open(temp_file_path, "r") as f:
+        minified_output = f.read()
+    minified_output = re.sub(r'\s+', '', minified_output) # Remove all whitespace
+    minified_output = re.sub(r'\n', '', minified_output) # Remove all newlines
+
+    click.echo(minified_output)
+    os.remove(temp_file_path)
