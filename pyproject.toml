@@ -22,3 +22,11 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 prepkit = "prepkit.main:cli"
+
+[tool.poetry.plugins."prepkit.preprocessors"]
+rust = "prepkit.plugins.rust_plugin:RustPreprocessor"
+kotlin = "prepkit.plugins.kotlin_plugin:KotlinPreprocessor"
+
+[tool.poetry.plugins."prepkit.minifiers"]
+rust = "prepkit.plugins.rust_plugin:RustMinifier"
+kotlin = "prepkit.plugins.kotlin_plugin:KotlinMinifier"
