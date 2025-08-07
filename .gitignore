@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+.Trashes
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg
+*.whl
+
+# Temporary files
+*.tmp
+*.log
+temp_combined.cpp
+temp_minify.cpp
+
+# Poetry
+.poetry/
+poetry.lock # Keep if you want to commit lock file, ignore if not
