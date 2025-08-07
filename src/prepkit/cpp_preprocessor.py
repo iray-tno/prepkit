@@ -3,6 +3,7 @@ import os
 import re
 from collections import defaultdict, deque
 import clang.cindex
+import subprocess
 
 def build_dependency_graph(files, include_paths):
     graph = defaultdict(list)
@@ -50,8 +51,7 @@ def topological_sort(graph, in_degree, all_files):
     else:
         return None
 
-def get_tokens_without_comments(translation_unit):
-    return [t for t in translation_unit.get_tokens(extent=translation_unit.cursor.extent) if t.kind != clang.cindex.TokenKind.COMMENT]
+# Removed get_tokens_without_comments as it will no longer be used for output generation
 
 @click.group()
 def cpp():
@@ -100,37 +100,58 @@ def preprocess(file, include_paths):
                 source_content = include_regex.sub("", source_content)
                 combined_content += source_content
 
-        index = clang.cindex.Index.create()
         temp_file_path = "temp_combined.cpp"
         with open(temp_file_path, "w") as f:
             f.write(combined_content)
 
-        clang_include_paths = [f'-I{path}' for path in all_include_paths]
-        tu = index.parse(temp_file_path, args=clang_include_paths)
+        # First clang-format pass for initial formatting
+        subprocess.run(['clang-format', '-i', temp_file_path])
+        
+        with open(temp_file_path, "r") as f:
+            formatted_content = f.read()
 
+        clang.cindex.Config.set_library_file("/lib/x86_64-linux-gnu/libclang-18.so.18")
+        index = clang.cindex.Index.create()
+        clang_include_paths = [f'-I{path}' for path in all_include_paths]
+        tu = index.parse(temp_file_path, args=clang_include_paths, unsaved_files=[(temp_file_path, formatted_content)])
+
+        # Collect constexpr values
         constexpr_values = {}
         for c in tu.cursor.walk_preorder():
-            if c.kind == clang.cindex.CursorKind.VAR_DECL and c.is_const_expr():
-                name = c.spelling
-                value = None
-                for child in c.get_children():
-                    if child.kind.is_literal():
-                        value = next(child.get_tokens(), None)
-                        if value:
-                            value = value.spelling
-                            break
-                if value:
-                    constexpr_values[name] = value
+            if c.kind == clang.cindex.CursorKind.VAR_DECL:
+                tokens = {t.spelling for t in c.get_tokens()}
+                if 'constexpr' in tokens:
+                    name = c.spelling
+                    value = None
+                    literal_kinds = [clang.cindex.CursorKind.INTEGER_LITERAL, clang.cindex.CursorKind.FLOATING_LITERAL, clang.cindex.CursorKind.IMAGINARY_LITERAL, clang.cindex.CursorKind.STRING_LITERAL, clang.cindex.CursorKind.CHARACTER_LITERAL]
+                    for child in c.get_children():
+                        if child.kind in literal_kinds:
+                            value = next(child.get_tokens(), None)
+                            if value:
+                                value = value.spelling
+                                break
+                    if value:
+                        constexpr_values[name] = value
 
-        tokens = get_tokens_without_comments(tu)
-        output = ""
-        for token in tokens:
-            if token.kind == clang.cindex.TokenKind.IDENTIFIER and token.spelling in constexpr_values:
-                output += constexpr_values[token.spelling] + " "
-            else:
-                output += token.spelling + " "
-        
-        click.echo(output)
+        # Perform text-based constexpr replacement
+        processed_content = formatted_content
+        for name, value in constexpr_values.items():
+            processed_content = re.sub(r'\b' + re.escape(name) + r'\b', value, processed_content)
+
+        # Remove comments using regex
+        processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
+        processed_content = re.sub(r'/\*.*?\*/', '', processed_content, flags=re.DOTALL)  # Multi-line comments
+
+        # Final clang-format pass
+        with open(temp_file_path, "w") as f:
+            f.write(processed_content)
+
+        subprocess.run(['clang-format', '-i', temp_file_path])
+
+        with open(temp_file_path, "r") as f:
+            final_output = f.read()
+
+        click.echo(final_output)
         os.remove(temp_file_path)
     else:
         click.echo("Error: Circular dependency detected.", err=True)
