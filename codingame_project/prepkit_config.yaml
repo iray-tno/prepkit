@@ -1,0 +1,3 @@
+cpp_preprocess:
+  minify_output: true
+project_type: codingame

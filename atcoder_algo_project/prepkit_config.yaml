@@ -1,0 +1,3 @@
+cpp_preprocess:
+  minify_output: false
+project_type: atcoder-algorithm
