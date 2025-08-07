@@ -4,7 +4,7 @@ import re
 from collections import defaultdict, deque
 import clang.cindex
 import subprocess
-from ..plugins import BasePreprocessor, BaseMinifier
+from ..base_interfaces import BasePreprocessor, BaseMinifier
 
 class CppPreprocessor(BasePreprocessor):
     def preprocess(self, file_path: str, include_paths: list[str]) -> str:

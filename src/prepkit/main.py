@@ -3,7 +3,7 @@ import importlib.metadata
 
 from .kaggle_automation import kaggle
 from .experiment_manager import experiment
-from .plugins import BasePreprocessor, BaseMinifier
+from .base_interfaces import BasePreprocessor, BaseMinifier
 
 @click.group()
 def cli():
@@ -13,16 +13,14 @@ cli.add_command(kaggle)
 cli.add_command(experiment)
 
 def load_plugins(group_name, base_class):
-    for entry_point in importlib.metadata.entry_points().get(group_name, []):
+    for entry_point in importlib.metadata.entry_points().select(group=group_name):
         try:
             plugin_class = entry_point.load()
             if issubclass(plugin_class, base_class):
                 plugin_instance = plugin_class()
                 for lang in plugin_instance.get_supported_languages():
-                    # Create a command group for each language
-                    @cli.group(name=lang)
-                    def lang_group():
-                        pass
+                    lang_group = click.Group(name=lang)
+                    cli.add_command(lang_group)
 
                     # Add preprocess command
                     @lang_group.command(name="preprocess")

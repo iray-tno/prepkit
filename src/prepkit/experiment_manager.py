@@ -2,7 +2,7 @@ import click
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import optuna
-from optuna.integration.wandb import WeightsAndBiasesCallback
+from optuna_integration.wandb import WeightsAndBiasesCallback
 import wandb
 
 @click.group()
