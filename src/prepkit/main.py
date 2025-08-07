@@ -1,5 +1,6 @@
 import click
 import importlib.metadata
+import shutil
 
 from .kaggle_automation import kaggle
 from .experiment_manager import experiment
@@ -33,6 +34,36 @@ cpp_minifier_instance = CppMinifier()
 def cpp_minify_cmd(file):
     result = cpp_minifier_instance.minify(file)
     click.echo(result)
+
+# Project command group
+@cli.group()
+def project():
+    """Project management commands."""
+    pass
+
+@project.command()
+@click.argument('project_name')
+@click.option('--lang', default='cpp', help='Programming language for the boilerplate (e.g., cpp).')
+def new(project_name, lang):
+    """
+    Creates a new project boilerplate in the specified directory.
+    """
+    boilerplate_path = os.path.join(os.path.dirname(__file__), 'boilerplate', lang)
+    destination_path = os.path.join(os.getcwd(), project_name)
+
+    if not os.path.exists(boilerplate_path):
+        click.echo(f"Error: Boilerplate for language '{lang}' not found.", err=True)
+        return
+
+    if os.path.exists(destination_path):
+        click.echo(f"Error: Project directory '{project_name}' already exists.", err=True)
+        return
+
+    try:
+        shutil.copytree(boilerplate_path, destination_path)
+        click.echo(f"Successfully created new {lang} project '{project_name}' at {destination_path}")
+    except Exception as e:
+        click.echo(f"Error creating project: {e}", err=True)
 
 # Keep load_plugins for future expansion (Rust, Kotlin, etc.)
 def load_plugins(group_name, base_class):
