@@ -1,45 +1,54 @@
 import click
 import os
 import re
+from collections import defaultdict, deque
 
-def resolve_includes_re(file_path, processed_files=None, include_paths=None):
-    if processed_files is None:
-        processed_files = set()
-
-    # To prevent circular dependencies
-    abs_file_path = os.path.abspath(file_path)
-    if abs_file_path in processed_files:
-        return ""
-    processed_files.add(abs_file_path)
-
-    if include_paths is None:
-        include_paths = [os.path.dirname(file_path)]
-
-    try:
-        with open(file_path, 'r') as f:
-            content = f.read()
-    except FileNotFoundError:
-        return f"// File not found: {file_path}"
-
-    # This regex will find #include "..."
+def build_dependency_graph(files, include_paths):
+    graph = defaultdict(list)
+    in_degree = defaultdict(int)
+    
     include_regex = re.compile(r'#include\s+"([^"]+)"')
 
-    def replace_include(match):
-        include_file = match.group(1)
-        
-        found = False
-        for path in include_paths:
-            full_path = os.path.join(path, include_file)
-            if os.path.exists(full_path):
-                # Prepend a comment to indicate where the code came from
-                included_content = resolve_includes_re(full_path, processed_files, include_paths)
-                return f"// From {include_file}\n{included_content}\n// End of {include_file}"
-        
-        # If not found, keep the original #include line
-        return match.group(0)
+    for file_path in files:
+        if not os.path.exists(file_path):
+            continue
 
-    return include_regex.sub(replace_include, content)
+        with open(file_path, 'r') as f:
+            content = f.read()
 
+        for match in include_regex.finditer(content):
+            include_file = match.group(1)
+            found = False
+            for path in include_paths:
+                full_path = os.path.abspath(os.path.join(path, include_file))
+                if os.path.exists(full_path):
+                    graph[full_path].append(os.path.abspath(file_path))
+                    in_degree[os.path.abspath(file_path)] += 1
+                    found = True
+                    break
+            if not found:
+                click.echo(f"Warning: Could not find include file {include_file} in {file_path}", err=True)
+
+    return graph, in_degree
+
+def topological_sort(graph, in_degree, all_files):
+    queue = deque([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
+    sorted_order = []
+
+    while queue:
+        node = queue.popleft()
+        sorted_order.append(node)
+
+        for neighbor in graph[node]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    if len(sorted_order) == len(all_files):
+        return sorted_order
+    else:
+        # Cycle detected
+        return None
 
 @click.group()
 def cpp():
@@ -51,7 +60,7 @@ def cpp():
 @click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True))
 def preprocess(file, include_paths):
     """
-    Preprocesses a C++ file by resolving #include directives.
+    Preprocesses a C++ file by resolving #include directives using topological sort.
     """
     click.echo(f"Preprocessing {file}")
     
@@ -59,9 +68,42 @@ def preprocess(file, include_paths):
     file_dir = os.path.dirname(file)
     if file_dir not in all_include_paths:
         all_include_paths.insert(0, file_dir)
+
+    # Discover all files
+    all_files = {os.path.abspath(file)}
+    include_regex = re.compile(r'#include\s+"([^"]+)"')
+    files_to_scan = [file]
+
+    while files_to_scan:
+        current_file = files_to_scan.pop(0)
+        with open(current_file, 'r') as f:
+            content = f.read()
         
-    output = resolve_includes_re(file, include_paths=all_include_paths)
-    click.echo(output)
+        for match in include_regex.finditer(content):
+            include_file = match.group(1)
+            for path in all_include_paths:
+                full_path = os.path.abspath(os.path.join(path, include_file))
+                if os.path.exists(full_path) and full_path not in all_files:
+                    all_files.add(full_path)
+                    files_to_scan.append(full_path)
+
+    graph, in_degree = build_dependency_graph(list(all_files), all_include_paths)
+    sorted_files = topological_sort(graph, in_degree, list(all_files))
+
+    if sorted_files:
+        output = ""
+        for f in sorted_files:
+            with open(f, 'r') as source_file:
+                # Add a comment to indicate where the code came from
+                source_content = source_file.read()
+                # Remove local includes
+                source_content = include_regex.sub("", source_content)
+                output += f"// From {os.path.basename(f)}\n"
+                output += source_content
+                output += f"\n// End of {os.path.basename(f)}\n"
+        click.echo(output)
+    else:
+        click.echo("Error: Circular dependency detected.", err=True)
 
 
 @cpp.command()
