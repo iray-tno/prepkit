@@ -1,6 +1,7 @@
 import click
 import importlib.metadata
 import shutil
+import os
 
 from .kaggle_automation import kaggle
 from .experiment_manager import experiment
