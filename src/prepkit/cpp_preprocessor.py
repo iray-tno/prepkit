@@ -2,6 +2,7 @@ import click
 import os
 import re
 from collections import defaultdict, deque
+import clang.cindex
 
 def build_dependency_graph(files, include_paths):
     graph = defaultdict(list)
@@ -47,8 +48,10 @@ def topological_sort(graph, in_degree, all_files):
     if len(sorted_order) == len(all_files):
         return sorted_order
     else:
-        # Cycle detected
         return None
+
+def get_tokens_without_comments(translation_unit):
+    return [t for t in translation_unit.get_tokens(extent=translation_unit.cursor.extent) if t.kind != clang.cindex.TokenKind.COMMENT]
 
 @click.group()
 def cpp():
@@ -60,7 +63,7 @@ def cpp():
 @click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True))
 def preprocess(file, include_paths):
     """
-    Preprocesses a C++ file by resolving #include directives using topological sort.
+    Preprocesses a C++ file using topological sort, handling includes, constexpr, and comments.
     """
     click.echo(f"Preprocessing {file}")
     
@@ -69,7 +72,6 @@ def preprocess(file, include_paths):
     if file_dir not in all_include_paths:
         all_include_paths.insert(0, file_dir)
 
-    # Discover all files
     all_files = {os.path.abspath(file)}
     include_regex = re.compile(r'#include\s+"([^"]+)"')
     files_to_scan = [file]
@@ -91,17 +93,45 @@ def preprocess(file, include_paths):
     sorted_files = topological_sort(graph, in_degree, list(all_files))
 
     if sorted_files:
-        output = ""
+        combined_content = ""
         for f in sorted_files:
             with open(f, 'r') as source_file:
-                # Add a comment to indicate where the code came from
                 source_content = source_file.read()
-                # Remove local includes
                 source_content = include_regex.sub("", source_content)
-                output += f"// From {os.path.basename(f)}\n"
-                output += source_content
-                output += f"\n// End of {os.path.basename(f)}\n"
+                combined_content += source_content
+
+        index = clang.cindex.Index.create()
+        temp_file_path = "temp_combined.cpp"
+        with open(temp_file_path, "w") as f:
+            f.write(combined_content)
+
+        clang_include_paths = [f'-I{path}' for path in all_include_paths]
+        tu = index.parse(temp_file_path, args=clang_include_paths)
+
+        constexpr_values = {}
+        for c in tu.cursor.walk_preorder():
+            if c.kind == clang.cindex.CursorKind.VAR_DECL and c.is_const_expr():
+                name = c.spelling
+                value = None
+                for child in c.get_children():
+                    if child.kind.is_literal():
+                        value = next(child.get_tokens(), None)
+                        if value:
+                            value = value.spelling
+                            break
+                if value:
+                    constexpr_values[name] = value
+
+        tokens = get_tokens_without_comments(tu)
+        output = ""
+        for token in tokens:
+            if token.kind == clang.cindex.TokenKind.IDENTIFIER and token.spelling in constexpr_values:
+                output += constexpr_values[token.spelling] + " "
+            else:
+                output += token.spelling + " "
+        
         click.echo(output)
+        os.remove(temp_file_path)
     else:
         click.echo("Error: Circular dependency detected.", err=True)
 
