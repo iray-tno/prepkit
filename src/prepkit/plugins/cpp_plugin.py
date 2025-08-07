@@ -4,6 +4,7 @@ import re
 from collections import defaultdict, deque
 import clang.cindex
 import subprocess
+from typing import List, Tuple, Dict, Set
 from ..base_interfaces import BasePreprocessor, BaseMinifier
 
 # Set libclang path once when the module is imported
@@ -13,43 +14,43 @@ except Exception as e:
     click.echo(f"Warning: Could not set libclang library path. Ensure libclang-18 is installed and accessible. Error: {e}", err=True)
 
 class CppPreprocessor(BasePreprocessor):
-    def preprocess(self, file_path: str, include_paths: list[str]) -> str:
+    def preprocess(self, file_path: str, include_paths: List[str]) -> str:
         click.echo(f"Preprocessing {file_path}")
         
-        all_include_paths = list(include_paths)
-        file_dir = os.path.dirname(file_path)
+        all_include_paths: List[str] = list(include_paths)
+        file_dir: str = os.path.dirname(file_path)
         if file_dir not in all_include_paths:
             all_include_paths.insert(0, file_dir)
 
-        all_files = {os.path.abspath(file_path)}
-        include_regex = re.compile(r'#include\s+"([^"]+)"')
-        files_to_scan = [file_path]
+        all_files: Set[str] = {os.path.abspath(file_path)}
+        include_regex: re.Pattern = re.compile(r'#include\s+"([^"]+)"')
+        files_to_scan: List[str] = [file_path]
 
         while files_to_scan:
-            current_file = files_to_scan.pop(0)
+            current_file: str = files_to_scan.pop(0)
             with open(current_file, 'r') as f:
-                content = f.read()
+                content: str = f.read()
             
             for match in include_regex.finditer(content):
-                include_file = match.group(1)
+                include_file: str = match.group(1)
                 for path in all_include_paths:
-                    full_path = os.path.abspath(os.path.join(path, include_file))
+                    full_path: str = os.path.abspath(os.path.join(path, include_file))
                     if os.path.exists(full_path) and full_path not in all_files:
                         all_files.add(full_path)
                         files_to_scan.append(full_path)
 
         graph, in_degree = self._build_dependency_graph(list(all_files), all_include_paths)
-        sorted_files = self._topological_sort(graph, in_degree, list(all_files))
+        sorted_files: List[str] | None = self._topological_sort(graph, in_degree, list(all_files))
 
         if sorted_files:
-            combined_content = ""
+            combined_content: str = ""
             for f in sorted_files:
                 with open(f, 'r') as source_file:
-                    source_content = source_file.read()
+                    source_content: str = source_file.read()
                     source_content = include_regex.sub("", source_content)
                     combined_content += source_content
 
-            temp_file_path = "temp_combined.cpp"
+            temp_file_path: str = "temp_combined.cpp"
             with open(temp_file_path, "w") as f:
                 f.write(combined_content)
 
@@ -57,39 +58,39 @@ class CppPreprocessor(BasePreprocessor):
             subprocess.run(['clang-format', '-i', temp_file_path])
             
             with open(temp_file_path, "r") as f:
-                formatted_content = f.read()
+                formatted_content: str = f.read()
 
-            index = clang.cindex.Index.create()
-            clang_include_paths = [f'-I{path}' for path in all_include_paths]
+            index: clang.cindex.Index = clang.cindex.Index.create()
+            clang_include_paths: List[str] = [f'-I{path}' for path in all_include_paths]
             
             # Re-parse formatted_content to get accurate AST after first formatting pass
-            tu_for_decls = index.parse(temp_file_path, args=clang_include_paths, unsaved_files=[(temp_file_path, formatted_content)])
+            tu_for_decls: clang.cindex.TranslationUnit = index.parse(temp_file_path, args=clang_include_paths, unsaved_files=[(temp_file_path, formatted_content)])
 
-            constexpr_values = {}
-            constexpr_decl_ranges = []
+            constexpr_values: Dict[str, str] = {}
+            constexpr_decl_ranges: List[clang.cindex.SourceRange] = []
 
             for c in tu_for_decls.cursor.walk_preorder():
                 if c.kind == clang.cindex.CursorKind.VAR_DECL:
-                    tokens = {t.spelling for t in c.get_tokens()}
+                    tokens: Set[str] = {t.spelling for t in c.get_tokens()}
                     if 'constexpr' in tokens:
                         # Store the source range of the constexpr declaration
                         constexpr_decl_ranges.append(c.extent)
                         # Also collect the value for replacement later
-                        name = c.spelling
-                        value = None
-                        literal_kinds = [clang.cindex.CursorKind.INTEGER_LITERAL, clang.cindex.CursorKind.FLOATING_LITERAL, clang.cindex.CursorKind.IMAGINARY_LITERAL, clang.cindex.CursorKind.STRING_LITERAL, clang.cindex.CursorKind.CHARACTER_LITERAL]
+                        name: str = c.spelling
+                        value: str | None = None
+                        literal_kinds: List[clang.cindex.CursorKind] = [clang.cindex.CursorKind.INTEGER_LITERAL, clang.cindex.CursorKind.FLOATING_LITERAL, clang.cindex.CursorKind.IMAGINARY_LITERAL, clang.cindex.CursorKind.STRING_LITERAL, clang.cindex.CursorKind.CHARACTER_LITERAL]
                         for child in c.get_children():
                             if child.kind in literal_kinds:
-                                value = next(child.get_tokens(), None)
-                                if value:
-                                    value = value.spelling
+                                value_token: clang.cindex.Token | None = next(child.get_tokens(), None)
+                                if value_token:
+                                    value = value_token.spelling
                                     break
                         if value:
                             constexpr_values[name] = value
 
             # Build new content by skipping constexpr declarations
-            processed_content_list = []
-            current_offset = 0
+            processed_content_list: List[str] = []
+            current_offset: int = 0
             # Sort ranges by start offset to process them in order
             for extent in sorted(constexpr_decl_ranges, key=lambda x: x.start.offset):
                 # Add content before the current constexpr declaration
@@ -97,7 +98,7 @@ class CppPreprocessor(BasePreprocessor):
                 current_offset = extent.end.offset
             # Add any remaining content after the last constexpr declaration
             processed_content_list.append(formatted_content[current_offset:])
-            processed_content = "".join(processed_content_list)
+            processed_content: str = "".join(processed_content_list)
 
             # Perform text-based constexpr replacement
             for name, value in constexpr_values.items():
@@ -114,7 +115,7 @@ class CppPreprocessor(BasePreprocessor):
             subprocess.run(['clang-format', '-i', temp_file_path])
 
             with open(temp_file_path, "r") as f:
-                final_output = f.read()
+                final_output: str = f.read()
 
             os.remove(temp_file_path)
             return final_output
@@ -122,27 +123,27 @@ class CppPreprocessor(BasePreprocessor):
             click.echo("Error: Circular dependency detected.", err=True)
             return ""
 
-    def get_supported_languages(self) -> list[str]:
+    def get_supported_languages(self) -> List[str]:
         return ["cpp", "cxx", "c"]
 
-    def _build_dependency_graph(self, files, include_paths):
-        graph = defaultdict(list)
-        in_degree = defaultdict(int)
+    def _build_dependency_graph(self, files: List[str], include_paths: List[str]) -> Tuple[Dict[str, List[str]], Dict[str, int]]:
+        graph: Dict[str, List[str]] = defaultdict(list)
+        in_degree: Dict[str, int] = defaultdict(int)
         
-        include_regex = re.compile(r'#include\s+"([^"]+)"')
+        include_regex: re.Pattern = re.compile(r'#include\s+"([^"]+)"')
 
         for file_path in files:
             if not os.path.exists(file_path):
                 continue
 
             with open(file_path, 'r') as f:
-                content = f.read()
+                content: str = f.read()
 
             for match in include_regex.finditer(content):
-                include_file = match.group(1)
-                found = False
+                include_file: str = match.group(1)
+                found: bool = False
                 for path in include_paths:
-                    full_path = os.path.abspath(os.path.join(path, include_file))
+                    full_path: str = os.path.abspath(os.path.join(path, include_file))
                     if os.path.exists(full_path):
                         graph[full_path].append(os.path.abspath(file_path))
                         in_degree[os.path.abspath(file_path)] += 1
@@ -153,12 +154,12 @@ class CppPreprocessor(BasePreprocessor):
 
         return graph, in_degree
 
-    def _topological_sort(self, graph, in_degree, all_files):
-        queue = deque([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
-        sorted_order = []
+    def _topological_sort(self, graph: Dict[str, List[str]], in_degree: Dict[str, int], all_files: List[str]) -> List[str] | None:
+        queue: deque[str] = deque([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
+        sorted_order: List[str] = []
 
         while queue:
-            node = queue.popleft()
+            node: str = queue.popleft()
             sorted_order.append(node)
 
             for neighbor in graph[node]:
@@ -174,12 +175,12 @@ class CppPreprocessor(BasePreprocessor):
 class CppMinifier(BaseMinifier):
     def minify(self, file_path: str) -> str:
         click.echo(f"Minifying {file_path}")
-        temp_file_path = "temp_minify.cpp"
+        temp_file_path: str = "temp_minify.cpp"
         with open(file_path, "r") as f:
-            content = f.read()
+            content: str = f.read()
 
         # Aggressive clang-format style for minification
-        minify_style = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
+        minify_style: str = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
 
         # Remove comments using regex
         content = re.sub(r'//.*\n', '\n', content)  # Single-line comments
@@ -192,12 +193,12 @@ class CppMinifier(BaseMinifier):
 
         # Remove all newlines and extra spaces
         with open(temp_file_path, "r") as f:
-            minified_output = f.read()
+            minified_output: str = f.read()
         minified_output = re.sub(r'\s+', '', minified_output) # Remove all whitespace
         minified_output = re.sub(r'\n', '', minified_output) # Remove all newlines
 
         os.remove(temp_file_path)
         return minified_output
 
-    def get_supported_languages(self) -> list[str]:
+    def get_supported_languages(self) -> List[str]:
         return ["cpp", "cxx", "c"]
