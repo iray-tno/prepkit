@@ -6,6 +6,12 @@ import clang.cindex
 import subprocess
 from ..base_interfaces import BasePreprocessor, BaseMinifier
 
+# Set libclang path once when the module is imported
+try:
+    clang.cindex.Config.set_library_file("/lib/x86_64-linux-gnu/libclang-18.so.18")
+except Exception as e:
+    click.echo(f"Warning: Could not set libclang library path. Ensure libclang-18 is installed and accessible. Error: {e}", err=True)
+
 class CppPreprocessor(BasePreprocessor):
     def preprocess(self, file_path: str, include_paths: list[str]) -> str:
         click.echo(f"Preprocessing {file_path}")
@@ -53,7 +59,6 @@ class CppPreprocessor(BasePreprocessor):
             with open(temp_file_path, "r") as f:
                 formatted_content = f.read()
 
-            clang.cindex.Config.set_library_file("/lib/x86_64-linux-gnu/libclang-18.so.18")
             index = clang.cindex.Index.create()
             clang_include_paths = [f'-I{path}' for path in all_include_paths]
             
