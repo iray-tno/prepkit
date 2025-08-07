@@ -2,11 +2,12 @@ import click
 import importlib.metadata
 import shutil
 import os
+import yaml
 
 from .kaggle_automation import kaggle
 from .experiment_manager import experiment
 from .base_interfaces import BasePreprocessor, BaseMinifier
-from .plugins.cpp_plugin import CppPreprocessor, CppMinifier
+from .plugins.cpp_plugin import CppPreprocessor
 
 @click.group()
 def cli():
@@ -29,13 +30,6 @@ def cpp_preprocess_cmd(file, include_paths):
     result = cpp_preprocessor_instance.preprocess(file, list(include_paths))
     click.echo(result)
 
-cpp_minifier_instance = CppMinifier()
-@cpp_group.command(name="minify")
-@click.argument('file', type=click.Path(exists=True, resolve_path=True))
-def cpp_minify_cmd(file):
-    result = cpp_minifier_instance.minify(file)
-    click.echo(result)
-
 # Project command group
 @cli.group()
 def project():
@@ -45,11 +39,13 @@ def project():
 @project.command()
 @click.argument('project_name')
 @click.option('--lang', default='cpp', help='Programming language for the boilerplate (e.g., cpp).')
-def new(project_name, lang):
+@click.option('--type', default='atcoder-algorithm', help='Preconfigured project type (e.g., atcoder-algorithm, codingame, kaggle).')
+def new(project_name, lang, type):
     """
     Creates a new project boilerplate in the specified directory.
     """
     boilerplate_path = os.path.join(os.path.dirname(__file__), 'boilerplate', lang)
+    project_configs_path = os.path.join(os.path.dirname(__file__), 'boilerplate', 'project_configs.yaml')
     destination_path = os.path.join(os.getcwd(), project_name)
 
     if not os.path.exists(boilerplate_path):
@@ -63,6 +59,25 @@ def new(project_name, lang):
     try:
         shutil.copytree(boilerplate_path, destination_path)
         click.echo(f"Successfully created new {lang} project '{project_name}' at {destination_path}")
+
+        # Load project configurations
+        with open(project_configs_path, 'r') as f:
+            all_project_configs = yaml.safe_load(f)
+        
+        selected_config = all_project_configs.get(type)
+        if not selected_config:
+            click.echo(f"Warning: Project type '{type}' not found in configurations. Using default settings.", err=True)
+            selected_config = {}
+
+        # Write prepkit_config.yaml to the new project directory
+        prepkit_config_content = {
+            "project_type": type,
+            "cpp_preprocess": selected_config.get("cpp_preprocess", {"minify_output": False}) # Default to no minify
+        }
+        with open(os.path.join(destination_path, "prepkit_config.yaml"), 'w') as f:
+            yaml.dump(prepkit_config_content, f, indent=2)
+        click.echo(f"Generated prepkit_config.yaml for type '{type}' in {project_name}")
+
     except Exception as e:
         click.echo(f"Error creating project: {e}", err=True)
 

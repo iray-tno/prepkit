@@ -1279,4 +1279,4 @@ workspaces = ["wandb-workspaces"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "7ae8e87db527df787fb7b4c6753b75311a44645af75e1e252d1ca5a7f08bb5f9"
+content-hash = "308cc03e6de548e82a23551f401fd140f9484df2788738d01211390705cb1208"

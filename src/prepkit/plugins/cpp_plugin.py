@@ -4,8 +4,9 @@ import re
 from collections import defaultdict, deque
 import clang.cindex
 import subprocess
-from typing import List, Tuple, Dict, Set
-from ..base_interfaces import BasePreprocessor, BaseMinifier
+import yaml
+from typing import List, Tuple, Dict, Set, Any
+from ..base_interfaces import BasePreprocessor
 
 # Set libclang path once when the module is imported
 try:
@@ -108,14 +109,41 @@ class CppPreprocessor(BasePreprocessor):
             processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
             processed_content = re.sub(r'/\*.*?\*/', '', processed_content, flags=re.DOTALL)  # Multi-line comments
 
-            # Final clang-format pass
-            with open(temp_file_path, "w") as f:
-                f.write(processed_content)
+            # Check for prepkit_config.yaml for minification setting
+            config_file_path: str = os.path.join(os.getcwd(), "prepkit_config.yaml")
+            minify_output: bool = False
+            if os.path.exists(config_file_path):
+                try:
+                    with open(config_file_path, 'r') as f:
+                        config: Dict[str, Any] = yaml.safe_load(f)
+                        minify_output = config.get("cpp_preprocess", {}).get("minify_output", False)
+                except yaml.YAMLError as e:
+                    click.echo(f"Warning: Error reading prepkit_config.yaml: {e}. Using default settings.", err=True)
 
-            subprocess.run(['clang-format', '-i', temp_file_path])
+            if minify_output:
+                # Aggressive clang-format style for minification
+                minify_style: str = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
 
-            with open(temp_file_path, "r") as f:
-                final_output: str = f.read()
+                # Final clang-format pass with minification style
+                with open(temp_file_path, "w") as f:
+                    f.write(processed_content)
+
+                subprocess.run(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
+
+                with open(temp_file_path, "r") as f:
+                    minified_output: str = f.read()
+                minified_output = re.sub(r'\s+', '', minified_output) # Remove all whitespace
+                minified_output = re.sub(r'\n', '', minified_output) # Remove all newlines
+                final_output: str = minified_output
+            else:
+                # Final clang-format pass with default style
+                with open(temp_file_path, "w") as f:
+                    f.write(processed_content)
+
+                subprocess.run(['clang-format', '-i', temp_file_path])
+
+                with open(temp_file_path, "r") as f:
+                    final_output: str = f.read()
 
             os.remove(temp_file_path)
             return final_output
@@ -171,34 +199,3 @@ class CppPreprocessor(BasePreprocessor):
             return sorted_order
         else:
             return None
-
-class CppMinifier(BaseMinifier):
-    def minify(self, file_path: str) -> str:
-        click.echo(f"Minifying {file_path}")
-        temp_file_path: str = "temp_minify.cpp"
-        with open(file_path, "r") as f:
-            content: str = f.read()
-
-        # Aggressive clang-format style for minification
-        minify_style: str = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
-
-        # Remove comments using regex
-        content = re.sub(r'//.*\n', '\n', content)  # Single-line comments
-        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)  # Multi-line comments
-
-        with open(temp_file_path, "w") as f:
-            f.write(content)
-
-        subprocess.run(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
-
-        # Remove all newlines and extra spaces
-        with open(temp_file_path, "r") as f:
-            minified_output: str = f.read()
-        minified_output = re.sub(r'\s+', '', minified_output) # Remove all whitespace
-        minified_output = re.sub(r'\n', '', minified_output) # Remove all newlines
-
-        os.remove(temp_file_path)
-        return minified_output
-
-    def get_supported_languages(self) -> List[str]:
-        return ["cpp", "cxx", "c"]

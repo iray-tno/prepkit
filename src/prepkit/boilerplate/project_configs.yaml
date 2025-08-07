@@ -1,0 +1,21 @@
+# Default configurations for different project types
+
+atcoder-algorithm:
+  description: Standard competitive programming setup for algorithm contests.
+  cpp_preprocess:
+    minify_output: false
+
+atcoder-heuristic:
+  description: Competitive programming setup for heuristic contests.
+  cpp_preprocess:
+    minify_output: false
+
+codingame:
+  description: Setup for Codingame contests, often requiring aggressive minification.
+  cpp_preprocess:
+    minify_output: true
+
+kaggle:
+  description: Setup for Kaggle competitions, typically notebook-based.
+  cpp_preprocess:
+    minify_output: false
