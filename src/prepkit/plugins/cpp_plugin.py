@@ -56,14 +56,20 @@ class CppPreprocessor(BasePreprocessor):
             clang.cindex.Config.set_library_file("/lib/x86_64-linux-gnu/libclang-18.so.18")
             index = clang.cindex.Index.create()
             clang_include_paths = [f'-I{path}' for path in all_include_paths]
-            tu = index.parse(temp_file_path, args=clang_include_paths, unsaved_files=[(temp_file_path, formatted_content)])
+            
+            # Re-parse formatted_content to get accurate AST after first formatting pass
+            tu_for_decls = index.parse(temp_file_path, args=clang_include_paths, unsaved_files=[(temp_file_path, formatted_content)])
 
-            # Collect constexpr values
             constexpr_values = {}
-            for c in tu.cursor.walk_preorder():
+            constexpr_decl_ranges = []
+
+            for c in tu_for_decls.cursor.walk_preorder():
                 if c.kind == clang.cindex.CursorKind.VAR_DECL:
                     tokens = {t.spelling for t in c.get_tokens()}
                     if 'constexpr' in tokens:
+                        # Store the source range of the constexpr declaration
+                        constexpr_decl_ranges.append(c.extent)
+                        # Also collect the value for replacement later
                         name = c.spelling
                         value = None
                         literal_kinds = [clang.cindex.CursorKind.INTEGER_LITERAL, clang.cindex.CursorKind.FLOATING_LITERAL, clang.cindex.CursorKind.IMAGINARY_LITERAL, clang.cindex.CursorKind.STRING_LITERAL, clang.cindex.CursorKind.CHARACTER_LITERAL]
@@ -76,8 +82,19 @@ class CppPreprocessor(BasePreprocessor):
                         if value:
                             constexpr_values[name] = value
 
+            # Build new content by skipping constexpr declarations
+            processed_content_list = []
+            current_offset = 0
+            # Sort ranges by start offset to process them in order
+            for extent in sorted(constexpr_decl_ranges, key=lambda x: x.start.offset):
+                # Add content before the current constexpr declaration
+                processed_content_list.append(formatted_content[current_offset:extent.start.offset])
+                current_offset = extent.end.offset
+            # Add any remaining content after the last constexpr declaration
+            processed_content_list.append(formatted_content[current_offset:])
+            processed_content = "".join(processed_content_list)
+
             # Perform text-based constexpr replacement
-            processed_content = formatted_content
             for name, value in constexpr_values.items():
                 processed_content = re.sub(r'\b' + re.escape(name) + r'\b', value, processed_content)
 
