@@ -36,3 +36,7 @@ temp_minify.cpp
 # Poetry
 .poetry/
 poetry.lock # Keep if you want to commit lock file, ignore if not
+
+# Serena
+.serena/*
+!.serena/project.yml
