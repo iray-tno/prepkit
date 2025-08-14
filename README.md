@@ -370,6 +370,30 @@ my_lang = "my_plugin_package.my_module:MyLangMinifier"
 - Advanced optimization techniques
 - Integration with more competitive programming platforms
 
+## Dogfooding During Development
+
+PrepKit is designed to be used during its own development to ensure practical effectiveness. See [DOGFOODING.md](DOGFOODING.md) for comprehensive guidelines on:
+
+- **Daily development validation routines**
+- **Real competitive programming practice integration** 
+- **AI assistant workflow testing**
+- **Performance monitoring and quality metrics**
+- **Edge case discovery through actual usage**
+
+Key dogfooding practices:
+```bash
+# Quick health check
+poetry run pytest --tb=short -q
+
+# Test preprocessing with your own solutions  
+cd src && python main.py cpp preprocess solution.cpp
+
+# Set up AI assistants for enhanced development
+poetry run python -m main ai-config setup claude-code
+```
+
+This approach ensures PrepKit evolves based on real-world usage patterns and remains genuinely useful for competitive programming workflows.
+
 ## Contributing
 
 Contributions are welcome! Please refer to the development plan (`競技プログラミング支援ツール開発計画.md`) for detailed architectural decisions and future roadmap.
