@@ -19,6 +19,15 @@ def temp_files(tmp_path):
 
     # Setup for constexpr test
     (tmp_path / "constexpr_test.cpp").write_text("constexpr int VALUE = 10;\nint main() { return VALUE; }\n")
+    
+    # Setup for floating-point constexpr test
+    (tmp_path / "float_constexpr_test.cpp").write_text("constexpr double PI = 3.14159;\nconstexpr float NEG_VAL = -2.5f;\nint main() { return PI + NEG_VAL; }\n")
+    
+    # Setup for boolean constexpr test
+    (tmp_path / "bool_constexpr_test.cpp").write_text("constexpr bool DEBUG = true;\nconstexpr bool RELEASE = false;\nint main() { return DEBUG ? 1 : (RELEASE ? 2 : 0); }\n")
+    
+    # Setup for string constexpr test
+    (tmp_path / "string_constexpr_test.cpp").write_text("constexpr const char* MSG = \"Hello\";\n#include <iostream>\nint main() { std::cout << MSG << std::endl; return 0; }\n")
 
     # Setup for comment removal test
     (tmp_path / "comments_test.cpp").write_text("// Single line comment\n/* Multi-line\n * comment */\nint main() { return 0; }\n")
@@ -44,6 +53,29 @@ def test_cpp_preprocess_constexpr(cpp_preprocessor, temp_files):
     
     assert "constexpr int VALUE = 10;" not in output # Ensure declaration is removed
     assert "return 10;" in output # Ensure replacement happened
+
+def test_cpp_preprocess_float_constexpr(cpp_preprocessor, temp_files):
+    float_constexpr_file = temp_files / "float_constexpr_test.cpp"
+    output = cpp_preprocessor.preprocess(str(float_constexpr_file), [])
+    
+    assert "constexpr double PI = 3.14159;" not in output # Ensure declaration is removed
+    assert "constexpr float NEG_VAL = -2.5f;" not in output # Ensure declaration is removed
+    assert "return 3.14159 + -2.5f;" in output # Ensure replacements happened
+
+def test_cpp_preprocess_bool_constexpr(cpp_preprocessor, temp_files):
+    bool_constexpr_file = temp_files / "bool_constexpr_test.cpp"
+    output = cpp_preprocessor.preprocess(str(bool_constexpr_file), [])
+    
+    assert "constexpr bool DEBUG = true;" not in output # Ensure declaration is removed
+    assert "constexpr bool RELEASE = false;" not in output # Ensure declaration is removed
+    assert "return true ? 1 : (false ? 2 : 0);" in output # Ensure replacements happened
+
+def test_cpp_preprocess_string_constexpr(cpp_preprocessor, temp_files):
+    string_constexpr_file = temp_files / "string_constexpr_test.cpp"
+    output = cpp_preprocessor.preprocess(str(string_constexpr_file), [])
+    
+    assert "constexpr const char* MSG = \"Hello\";" not in output # Ensure declaration is removed
+    assert 'std::cout << "Hello" << std::endl;' in output # Ensure replacement happened
 
 def test_cpp_preprocess_comments(cpp_preprocessor, temp_files):
     comments_file = temp_files / "comments_test.cpp"

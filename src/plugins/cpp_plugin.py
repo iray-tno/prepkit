@@ -79,12 +79,40 @@ class CppPreprocessor(BasePreprocessor):
                         # Also collect the value for replacement later
                         name: str = c.spelling
                         value: str | None = None
-                        literal_kinds: List[clang.cindex.CursorKind] = [clang.cindex.CursorKind.INTEGER_LITERAL, clang.cindex.CursorKind.FLOATING_LITERAL, clang.cindex.CursorKind.IMAGINARY_LITERAL, clang.cindex.CursorKind.STRING_LITERAL, clang.cindex.CursorKind.CHARACTER_LITERAL]
+                        literal_kinds: List[clang.cindex.CursorKind] = [
+                            clang.cindex.CursorKind.INTEGER_LITERAL, 
+                            clang.cindex.CursorKind.FLOATING_LITERAL, 
+                            clang.cindex.CursorKind.IMAGINARY_LITERAL, 
+                            clang.cindex.CursorKind.STRING_LITERAL, 
+                            clang.cindex.CursorKind.CHARACTER_LITERAL,
+                            clang.cindex.CursorKind.CXX_BOOL_LITERAL_EXPR
+                        ]
                         for child in c.get_children():
                             if child.kind in literal_kinds:
                                 value_token: clang.cindex.Token | None = next(child.get_tokens(), None)
                                 if value_token:
                                     value = value_token.spelling
+                                    break
+                            elif child.kind == clang.cindex.CursorKind.UNEXPOSED_EXPR:
+                                # Handle unexposed expressions that might contain literals (e.g., string literals)
+                                for grandchild in child.get_children():
+                                    if grandchild.kind in literal_kinds:
+                                        value_token: clang.cindex.Token | None = next(grandchild.get_tokens(), None)
+                                        if value_token:
+                                            value = value_token.spelling
+                                            break
+                                if value:
+                                    break
+                            elif child.kind == clang.cindex.CursorKind.UNARY_OPERATOR:
+                                # Handle negative numbers: constexpr double NEG_PI = -3.14159;
+                                tokens = list(child.get_tokens())
+                                if len(tokens) >= 2 and tokens[0].spelling == '-':
+                                    # Check if second token is a numeric literal
+                                    for grandchild in child.get_children():
+                                        if grandchild.kind in [clang.cindex.CursorKind.INTEGER_LITERAL, clang.cindex.CursorKind.FLOATING_LITERAL]:
+                                            value = '-' + tokens[1].spelling
+                                            break
+                                if value:
                                     break
                         if value:
                             constexpr_values[name] = value
