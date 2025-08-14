@@ -63,6 +63,42 @@ excluded_tools: []
 
 # initial prompt for the project. It will always be given to the LLM upon activating the project
 # (contrary to the memories, which are loaded on demand).
-initial_prompt: ""
+initial_prompt: |
+  # PrepKit Project Context
+  
+  PrepKit is a comprehensive tool for competitive programming and ML workflows, featuring:
+  
+  ## Core Functionality
+  - **C++ Preprocessing**: Include resolution, constexpr replacement (int/float/bool/string), code minification
+  - **Kaggle Automation**: Notebook/competition submission with WandB experiment tracking
+  - **Experiment Management**: Hydra configuration, Optuna optimization, WandB logging integration
+  - **Project Scaffolding**: Boilerplate generation for AtCoder, Codingame, and Kaggle competitions
+  - **Plugin Architecture**: Extensible preprocessors and minifiers (C++, Rust, Kotlin planned)
+  
+  ## Project Structure
+  - `src/`: Main source code with plugin-based architecture
+  - `src/plugins/`: Language-specific preprocessors and minifiers
+  - `tests/`: Comprehensive test suite (17 tests) including integration and build verification
+  - `configs/`: Project templates and AI assistant configurations
+  - `.prepkit/`: Workspace-specific configurations and generated files
+  
+  ## Key Features for Boilerplate Generation
+  - Project templates in `configs/project-templates/` for different platforms
+  - AI assistant integration with context-aware prompts
+  - Preprocessing-compatible code patterns and structures
+  - Built-in support for competitive programming best practices
+  
+  ## Testing & Quality Assurance  
+  - Build verification tests ensuring g++ compilation success
+  - Snapshot testing for preprocessing regression detection
+  - Performance benchmarks (~730ms processing time)
+  - Property-based testing with Hypothesis
+  
+  When helping with competitive programming or ML experiment tasks, prioritize:
+  1. Single-file compatibility for contest submissions
+  2. Preprocessing-friendly patterns (constexpr, include structure)
+  3. WandB experiment tracking integration
+  4. Performance and memory efficiency
+  5. Platform-specific optimizations (AtCoder vs Codingame vs Kaggle)
 
 project_name: "prepkit"

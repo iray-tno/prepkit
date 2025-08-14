@@ -76,6 +76,32 @@
 # name: TestCppPreprocessorEnhanced.test_competitive_solution_snapshot[atcoder_solution_preprocessed]
   '''
   #pragma once
+  #include <iostream>
+  
+  inline void fast_io() {
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    std::cout.tie(nullptr);
+  }
+  
+  inline int read_int() {
+    int x;
+    std::cin >> x;
+    return x;
+  }
+  
+  inline long long read_ll() {
+    long long x;
+    std::cin >> x;
+    return x;
+  }
+  
+  inline std::string read_string() {
+    std::string s;
+    std::cin >> s;
+    return s;
+  }
+  #pragma once
   
   inline long long add_mod(long long a, long long b, long long mod) {
     return (a + b) % mod;
@@ -104,32 +130,6 @@
       a = temp;
     }
     return a;
-  }
-  #pragma once
-  #include <iostream>
-  
-  inline void fast_io() {
-    std::ios::sync_with_stdio(false);
-    std::cin.tie(nullptr);
-    std::cout.tie(nullptr);
-  }
-  
-  inline int read_int() {
-    int x;
-    std::cin >> x;
-    return x;
-  }
-  
-  inline long long read_ll() {
-    long long x;
-    std::cin >> x;
-    return x;
-  }
-  
-  inline std::string read_string() {
-    std::string s;
-    std::cin >> s;
-    return s;
   }
   #include <algorithm>
   #include <iostream>
@@ -181,10 +181,10 @@
       result = (result + i) % 1000000007;
     }
   
-    if (DEBUG) {
+    if (true) {
       std::cout << "Result: " << result << std::endl;
       std::cout << "3.14159265359 approximation: " << 3.14159265359 << std::endl;
-      std::cout << "Max value: " << INF << std::endl;
+      std::cout << "Max value: " << 1e18 << std::endl;
     }
   
     return result == 0 ? 0 : 1;
