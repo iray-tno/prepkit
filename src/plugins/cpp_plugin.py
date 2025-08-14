@@ -6,7 +6,7 @@ import clang.cindex
 import subprocess
 import yaml
 from typing import List, Tuple, Dict, Set, Any
-from ..base_interfaces import BasePreprocessor
+from base_interfaces import BasePreprocessor, BaseMinifier
 
 # Set libclang path once when the module is imported
 try:
@@ -199,3 +199,58 @@ class CppPreprocessor(BasePreprocessor):
             return sorted_order
         else:
             return None
+
+
+class CppMinifier(BaseMinifier):
+    """C++ code minifier that removes comments and whitespace for size-constrained platforms."""
+    
+    def minify(self, file_path: str) -> str:
+        """Minify C++ code by removing comments and excess whitespace."""
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        # Create temporary file
+        temp_file_path = "temp_minify.cpp"
+        with open(temp_file_path, "w") as f:
+            f.write(content)
+        
+        try:
+            # Use clang-format with aggressive minification style
+            minify_style = """{
+                BasedOnStyle: LLVM,
+                IndentWidth: 0,
+                TabWidth: 0,
+                UseTab: Never,
+                BreakBeforeBraces: Attach,
+                AllowShortIfStatementsOnASingleLine: true,
+                AllowShortLoopsOnASingleLine: true,
+                AllowShortFunctionsOnASingleLine: true,
+                AllowShortBlocksOnASingleLine: true,
+                ColumnLimit: 1000
+            }"""
+            
+            subprocess.run(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
+            
+            with open(temp_file_path, "r") as f:
+                minified_output = f.read()
+            
+            # Remove comments using regex (basic approach)
+            # Remove single-line comments
+            minified_output = re.sub(r'//.*$', '', minified_output, flags=re.MULTILINE)
+            # Remove multi-line comments
+            minified_output = re.sub(r'/\*.*?\*/', '', minified_output, flags=re.DOTALL)
+            
+            # Remove excessive whitespace more aggressively
+            minified_output = re.sub(r'\s+', '', minified_output)  # Remove all whitespace
+            minified_output = re.sub(r'\n', '', minified_output)    # Remove all newlines
+            
+            return minified_output
+            
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+    
+    def get_supported_languages(self) -> list[str]:
+        """Return list of supported languages."""
+        return ["cpp", "c", "cxx"]

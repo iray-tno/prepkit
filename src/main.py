@@ -4,10 +4,10 @@ import shutil
 import os
 import yaml
 
-from .kaggle_automation import kaggle
-from .experiment_manager import experiment
-from .base_interfaces import BasePreprocessor, BaseMinifier
-from .plugins.cpp_plugin import CppPreprocessor
+from kaggle_automation import kaggle
+from experiment_manager import experiment
+from base_interfaces import BasePreprocessor, BaseMinifier
+from plugins.cpp_plugin import CppPreprocessor
 
 @click.group()
 def cli():

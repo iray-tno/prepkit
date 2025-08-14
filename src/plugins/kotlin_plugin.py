@@ -1,4 +1,4 @@
-from ..base_interfaces import BasePreprocessor, BaseMinifier
+from base_interfaces import BasePreprocessor, BaseMinifier
 
 class KotlinPreprocessor(BasePreprocessor):
     def preprocess(self, file_path: str, include_paths: list[str]) -> str:

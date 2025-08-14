@@ -7,7 +7,7 @@ from pathlib import Path
 from hypothesis import given, strategies as st, assume
 from syrupy import SnapshotAssertion
 
-from prepkit.plugins.cpp_plugin import CppPreprocessor, CppMinifier
+from plugins.cpp_plugin import CppPreprocessor, CppMinifier
 
 
 class TestCppPreprocessorEnhanced:

@@ -1,6 +1,6 @@
 import pytest
 import os
-from prepkit.plugins.cpp_plugin import CppPreprocessor, CppMinifier
+from plugins.cpp_plugin import CppPreprocessor, CppMinifier
 
 @pytest.fixture
 def cpp_preprocessor():
