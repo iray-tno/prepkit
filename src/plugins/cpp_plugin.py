@@ -240,9 +240,24 @@ class CppMinifier(BaseMinifier):
             # Remove multi-line comments
             minified_output = re.sub(r'/\*.*?\*/', '', minified_output, flags=re.DOTALL)
             
-            # Remove excessive whitespace more aggressively
-            minified_output = re.sub(r'\s+', '', minified_output)  # Remove all whitespace
-            minified_output = re.sub(r'\n', '', minified_output)    # Remove all newlines
+            # Moderate minification that preserves compilation compatibility
+            # Remove extra whitespace but keep necessary structure
+            lines = minified_output.split('\n')
+            minified_lines = []
+            
+            for line in lines:
+                line = line.strip()
+                if line:
+                    # Keep include statements on separate lines
+                    if line.startswith('#include'):
+                        minified_lines.append(line)
+                    else:
+                        # For other lines, compress spaces but keep basic structure
+                        line = re.sub(r'\s+', ' ', line)
+                        line = re.sub(r'\s*([{}();,])\s*', r'\1', line)
+                        minified_lines.append(line)
+            
+            minified_output = '\n'.join(minified_lines)
             
             return minified_output
             

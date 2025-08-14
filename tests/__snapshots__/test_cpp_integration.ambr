@@ -1,0 +1,214 @@
+# serializer version: 1
+# name: TestCppPreprocessorEnhanced.test_algorithm_template_snapshot[segment_tree_preprocessed]
+  '''
+  #pragma once
+  #include <vector>
+  
+  class SegmentTree {
+  private:
+    std::vector<long long> tree;
+    int size;
+  
+    void update_impl(int node, int start, int end, int idx, int val) {
+      if (start == end) {
+        tree[node] = val;
+      } else {
+        int mid = (start + end) / 2;
+        if (idx <= mid) {
+          update_impl(2 * node, start, mid, idx, val);
+        } else {
+          update_impl(2 * node + 1, mid + 1, end, idx, val);
+        }
+        tree[node] = tree[2 * node] + tree[2 * node + 1];
+      }
+    }
+  
+    long long query_impl(int node, int start, int end, int l, int r) {
+      if (r < start || end < l) {
+        return 0;
+      }
+      if (l <= start && end <= r) {
+        return tree[node];
+      }
+      int mid = (start + end) / 2;
+      return query_impl(2 * node, start, mid, l, r) +
+             query_impl(2 * node + 1, mid + 1, end, l, r);
+    }
+  
+  public:
+    SegmentTree(int n) : size(n) { tree.resize(4 * n); }
+  
+    void update(int idx, int val) { update_impl(1, 0, size - 1, idx, val); }
+  
+    long long query(int l, int r) { return query_impl(1, 0, size - 1, l, r); }
+  };
+  #include <iostream>
+  #include <vector>
+  
+  ;
+  ;
+  
+  int main() {
+    int n;
+    std::cin >> n;
+  
+    SegmentTree st(n);
+  
+    for (int i = 0; i < n; i++) {
+      int x;
+      std::cin >> x;
+      st.update(i, x);
+    }
+  
+    int q;
+    std::cin >> q;
+  
+    while (q--) {
+      int l, r;
+      std::cin >> l >> r;
+      std::cout << st.query(l, r) % 1000000007 << std::endl;
+    }
+  
+    return 0;
+  }
+  '''
+# ---
+# name: TestCppPreprocessorEnhanced.test_competitive_solution_snapshot[atcoder_solution_preprocessed]
+  '''
+  #pragma once
+  #include <iostream>
+  
+  inline void fast_io() {
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    std::cout.tie(nullptr);
+  }
+  
+  inline int read_int() {
+    int x;
+    std::cin >> x;
+    return x;
+  }
+  
+  inline long long read_ll() {
+    long long x;
+    std::cin >> x;
+    return x;
+  }
+  
+  inline std::string read_string() {
+    std::string s;
+    std::cin >> s;
+    return s;
+  }
+  #pragma once
+  
+  inline long long add_mod(long long a, long long b, long long mod) {
+    return (a + b) % mod;
+  }
+  
+  inline long long multiply_mod(long long a, long long b, long long mod) {
+    return (a * b) % mod;
+  }
+  
+  inline long long power_mod(long long base, long long exp, long long mod) {
+    long long result = 1;
+    while (exp > 0) {
+      if (exp % 2 == 1) {
+        result = multiply_mod(result, base, mod);
+      }
+      base = multiply_mod(base, base, mod);
+      exp /= 2;
+    }
+    return result;
+  }
+  
+  inline long long gcd(long long a, long long b) {
+    while (b != 0) {
+      long long temp = b;
+      b = a % b;
+      a = temp;
+    }
+    return a;
+  }
+  #include <algorithm>
+  #include <iostream>
+  #include <string>
+  #include <vector>
+  
+  ;
+  ;
+  
+  int main() {
+    fast_io();
+  
+    int n = read_int();
+    std::vector<long long> a(n);
+  
+    for (int i = 0; i < n; i++) {
+      a[i] = read_int();
+    }
+  
+    long long answer = 0;
+    for (int i = 0; i < n; i++) {
+      answer = add_mod(answer,
+                       multiply_mod(a[i], power_mod(2, i, 998244353), 998244353),
+                       998244353);
+    }
+  
+    std::cout << answer << std::endl;
+  
+    return 0;
+  }
+  '''
+# ---
+# name: TestCppPreprocessorEnhanced.test_complex_constexpr_snapshot[complex_constexpr_preprocessed]
+  '''
+  #include <iostream>
+  #include <vector>
+  
+  ;
+  ;
+  ;
+  ;
+  ;
+  
+  int main() {
+    std::vector<int> arr(200005);
+  
+    long long result = 0;
+    for (int i = 0; i < 1000; i++) {
+      result = (result + i) % 1000000007;
+    }
+  
+    if (DEBUG) {
+      std::cout << "Result: " << result << std::endl;
+      std::cout << "3.14159265359 approximation: " << 3.14159265359 << std::endl;
+      std::cout << "Max value: " << INF << std::endl;
+    }
+  
+    return result == 0 ? 0 : 1;
+  }
+  '''
+# ---
+# name: TestCppPreprocessorEnhanced.test_nested_includes_snapshot[nested_includes_preprocessed]
+  '''
+  #pragma once
+  
+  int func3() { return 30; }
+  #pragma once
+  
+  int func2() { return 20 + func3(); }
+  #pragma once
+  
+  int func1() { return 10 + func2(); }
+  #include <iostream>
+  
+  int main() {
+    std::cout << "Level 1: " << func1() << std::endl;
+    std::cout << "Level 2: " << func2() << std::endl;
+    std::cout << "Level 3: " << func3() << std::endl;
+    return 0;
+  }
+  '''
+# ---
