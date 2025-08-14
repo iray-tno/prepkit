@@ -6,6 +6,7 @@ import yaml
 
 from kaggle_automation import kaggle
 from experiment_manager import experiment
+from ai_assistant_config import ai_config
 from base_interfaces import BasePreprocessor, BaseMinifier
 from plugins.cpp_plugin import CppPreprocessor
 
@@ -15,6 +16,7 @@ def cli():
 
 cli.add_command(kaggle)
 cli.add_command(experiment)
+cli.add_command(ai_config)
 
 # Directly register C++ commands for now
 @cli.group(name="cpp")
