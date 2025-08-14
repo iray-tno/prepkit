@@ -9,8 +9,10 @@ A comprehensive tool to streamline competitive programming and machine learning 
 - [Usage](#usage)
   - [C++ Preprocessor](#c-preprocessor)
   - [C++ Minifier](#c-minifier)
+  - [Project Management](#project-management)
   - [Kaggle Automation](#kaggle-automation)
   - [Experiment Management](#experiment-management)
+- [Testing](#testing)
 - [Plugin Architecture](#plugin-architecture)
 - [Contributing](#contributing)
 
@@ -86,6 +88,33 @@ poetry run prepkit cpp minify <file_path>
 ```bash
 poetry run prepkit cpp minify my_solution.cpp
 ```
+
+### Project Management
+
+PrepKit provides project scaffolding to quickly create boilerplate code for different competitive programming platforms.
+
+#### Create New Project
+
+```bash
+poetry run prepkit project new <project_name> [--lang <language>] [--type <project_type>]
+```
+
+*   `<project_name>`: Name of the project directory to create
+*   `--lang <language>`: Programming language (default: `cpp`)
+*   `--type <project_type>`: Project template type (default: `atcoder-algorithm`)
+
+**Available project types:**
+- `atcoder-algorithm`: AtCoder competitive programming setup
+- `codingame`: Codingame setup with minification enabled
+- `kaggle`: Kaggle competition setup
+
+**Example:**
+
+```bash
+poetry run prepkit project new my_contest --lang cpp --type atcoder-algorithm
+```
+
+This creates a new directory with boilerplate code and a `prepkit_config.yaml` file configured for the specified platform.
 
 ### Kaggle Automation
 
@@ -225,11 +254,92 @@ Run the optimization:
 poetry run prepkit experiment optimize conf optuna_config hydra.sweeper.sampler.seed=42
 ```
 
+## Testing
+
+PrepKit includes a comprehensive test suite with multiple testing strategies to ensure reliability and correctness.
+
+### Running Tests
+
+**Run all tests:**
+```bash
+poetry run pytest
+```
+
+**Run specific test categories:**
+```bash
+# Unit tests only
+poetry run pytest tests/test_cpp_preprocessor.py
+
+# Integration tests only  
+poetry run pytest tests/test_cpp_integration.py
+
+# Build verification tests (requires g++)
+poetry run pytest -m build
+
+# Performance benchmarks
+poetry run pytest --benchmark-only
+```
+
+### Test Structure
+
+#### Unit Tests (`tests/test_cpp_preprocessor.py`)
+- **4 focused tests** for core C++ preprocessor functionality
+- Tests include resolution, constexpr replacement, comment removal, and minification
+- **Fast execution** (~1 second) for quick development feedback
+
+#### Integration Tests (`tests/test_cpp_integration.py`)
+- **13 comprehensive tests** covering real-world scenarios
+- **Snapshot testing** with regression baselines using realistic competitive programming code
+- **Build verification** - Ensures preprocessed code compiles with `g++` (most critical)
+- **Property-based testing** with Hypothesis for robustness validation
+- **Performance benchmarks** - Validates processing speed (~730ms for typical files)
+
+#### Test Categories
+- **Snapshot Tests**: Regression testing with golden master files
+- **Build Verification**: Compilation testing with multiple compiler flags
+- **Property-Based**: Fuzz testing with random inputs using Hypothesis
+- **Performance**: Benchmarking with `pytest-benchmark`
+- **Error Handling**: Edge case and failure mode testing
+
+### Test Dependencies
+
+The test suite includes advanced testing libraries:
+
+```toml
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4"
+syrupy = "^4.6.0"         # Snapshot testing
+hypothesis = "^6.0.0"     # Property-based testing
+pytest-xdist = "^3.0.0"   # Parallel execution
+pytest-benchmark = "^4.0.0" # Performance testing
+```
+
+### Test Data
+
+Realistic test cases include:
+- **Algorithm templates**: Segment tree implementations
+- **Competitive examples**: Full AtCoder/Codingame solutions
+- **Include scenarios**: Multi-level header dependencies
+- **Constexpr examples**: Complex constant declarations
+
 ## Plugin Architecture
 
 PrepKit is designed with a plugin-based architecture, allowing easy extension for new programming languages or functionalities.
 
-Plugins are discovered via Python's `entry_points` mechanism. New preprocessors or minifiers for different languages can be added by creating a Python class that inherits from `BasePreprocessor` or `BaseMinifier` (defined in `src/prepkit/base_interfaces.py`) and registering it in your `pyproject.toml` under the `[tool.poetry.plugins."prepkit.preprocessors"]` or `[tool.poetry.plugins."prepkit.minifiers"]` sections.
+Plugins are discovered via Python's `entry_points` mechanism. New preprocessors or minifiers for different languages can be added by creating a Python class that inherits from `BasePreprocessor` or `BaseMinifier` (defined in `src/base_interfaces.py`) and registering it in your `pyproject.toml` under the `[tool.poetry.plugins."prepkit.preprocessors"]` or `[tool.poetry.plugins."prepkit.minifiers"]` sections.
+
+### Current Plugin Support
+
+**Implemented:**
+- **C++**: Full preprocessor and minifier with libclang integration
+  - Include resolution for local headers
+  - Constexpr replacement (integer literals)
+  - Comment removal and code minification
+  - Build verification with g++
+
+**Planned:**
+- **Rust**: Basic preprocessor and minifier (plugin structure ready)
+- **Kotlin**: Basic preprocessor and minifier (plugin structure ready)
 
 **Example `pyproject.toml` entry for a custom plugin:**
 
@@ -241,6 +351,40 @@ my_lang = "my_plugin_package.my_module:MyLangPreprocessor"
 my_lang = "my_plugin_package.my_module:MyLangMinifier"
 ```
 
+## Current Status & Limitations
+
+### ✅ Fully Implemented
+- **C++ Preprocessor**: Include resolution, integer constexpr replacement, comment removal
+- **C++ Minifier**: Size-optimized output while preserving compilation compatibility
+- **Project Scaffolding**: Boilerplate generation for AtCoder, Codingame, Kaggle
+- **Comprehensive Testing**: 17 tests including build verification and performance benchmarks
+
+### ⚠️ Known Limitations
+- **Constexpr Support**: Currently limited to integer literals (no floating-point, boolean, or complex expressions)
+- **String Constexpr**: String constant replacement not yet implemented
+- **Rust/Kotlin Plugins**: Placeholder implementations only
+
+### 🔮 Future Enhancements
+- Extended constexpr support (floating-point, boolean, string literals)
+- Full Rust and Kotlin preprocessor implementations
+- Advanced optimization techniques
+- Integration with more competitive programming platforms
+
 ## Contributing
 
 Contributions are welcome! Please refer to the development plan (`競技プログラミング支援ツール開発計画.md`) for detailed architectural decisions and future roadmap.
+
+### Development Setup
+
+1. **Clone the repository**
+2. **Install dependencies**: `poetry install`
+3. **Install system dependencies**: `libclang-18` and `clang-format`
+4. **Run tests**: `poetry run pytest`
+5. **Check build verification**: `poetry run pytest -m build`
+
+### Pull Request Guidelines
+
+- Ensure all tests pass, including build verification tests
+- Add appropriate test coverage for new features
+- Update documentation for user-facing changes
+- Follow the existing code style and patterns
