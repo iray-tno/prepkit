@@ -1,23 +1,10 @@
 # PrepKit Dogfooding Guide
 
-This guide shows how to use PrepKit during its own development to ensure it works well in practice.
+This guide shows how to use PrepKit during its own development to ensure it works well in practice. Focus is on **actual usage** rather than testing (see [TESTING.md](TESTING.md) for testing workflows).
 
 ## Quick Start Dogfooding
 
-### 1. Daily Development Validation
-
-```bash
-# Run the full test suite
-poetry run pytest -v
-
-# Quick smoke test
-poetry run pytest tests/test_cpp_preprocessor.py -q
-
-# Performance check
-poetry run pytest --benchmark-only
-```
-
-### 2. Manual CLI Testing
+### 1. Manual CLI Testing
 
 ```bash
 # Test C++ preprocessing (from src directory)
@@ -30,7 +17,7 @@ python main.py cpp preprocess test.cpp
 python main.py cpp minify test.cpp
 ```
 
-### 3. AI Assistant Integration Testing
+### 2. AI Assistant Integration
 
 ```bash
 # Set up AI assistants for better development experience
@@ -41,7 +28,7 @@ poetry run python -m main ai-config status
 cat .prepkit/claude-code/setup.md
 ```
 
-### 4. Real Competitive Programming Practice
+### 3. Real Competitive Programming Practice
 
 Create competitive programming solutions using PrepKit:
 
@@ -81,7 +68,7 @@ g++ -o solution <(python main.py cpp preprocess practice_solution.cpp)
 ./solution < input.txt
 ```
 
-### 5. WandB Integration Testing
+### 4. WandB Integration Testing
 
 If you have WandB set up:
 
@@ -95,29 +82,26 @@ python main.py kaggle submit-competition submission.csv --competition test --log
 
 ### Morning Routine
 ```bash
-# 1. Check test health
-poetry run pytest --tb=short -q
-
-# 2. Verify AI assistant configs
+# 1. Verify AI assistant configs
 poetry run python -m main ai-config status
 
-# 3. Quick preprocessing test with new changes
+# 2. Quick preprocessing test with new changes
 cd src && python main.py cpp preprocess --help
 ```
 
 ### During Feature Development
 ```bash
-# Test new features as you build them
-poetry run pytest tests/test_cpp_preprocessor.py::test_cpp_preprocess_float_constexpr -v
-
 # Use PrepKit for the code you're writing
-python main.py cpp preprocess your_test_file.cpp -I ./includes
+cd src && python main.py cpp preprocess your_test_file.cpp -I ./includes
+
+# Try new features with real competitive programming solutions
+python main.py cpp minify complex_solution.cpp
 ```
 
 ### Before Committing
 ```bash
-# Full validation
-poetry run pytest
+# Quick manual validation with real usage
+cd src && python main.py cpp preprocess sample_solution.cpp
 git add -A && git commit -m "your message"
 ```
 
@@ -145,10 +129,10 @@ git add -A && git commit -m "your message"
 
 ## Quality Metrics to Track
 
-- **Build Success Rate**: Percentage of preprocessed files that compile
 - **Processing Time**: Time to preprocess typical contest solutions  
 - **Minification Ratio**: Code size reduction achieved
 - **AI Assistant Effectiveness**: Usefulness of generated suggestions
+- **Workflow Integration**: How naturally PrepKit fits into your coding practice
 
 ## Common Issues and Solutions
 
@@ -171,13 +155,13 @@ poetry install
 sudo apt-get install libclang-18 clang-format g++
 ```
 
-### Test Failures
+### Preprocessing Issues
 ```bash
-# Update snapshots when constexpr behavior changes
-poetry run pytest --snapshot-update
+# Check output manually
+cd src && python main.py cpp preprocess problematic_file.cpp
 
-# Run specific test categories
-poetry run pytest -m build  # Build verification tests
+# Verify compilation manually
+g++ -o test_solution <(python main.py cpp preprocess solution.cpp)
 ```
 
 ## Success Indicators

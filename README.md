@@ -370,29 +370,43 @@ my_lang = "my_plugin_package.my_module:MyLangMinifier"
 - Advanced optimization techniques
 - Integration with more competitive programming platforms
 
-## Dogfooding During Development
+## Development Guides
 
-PrepKit is designed to be used during its own development to ensure practical effectiveness. See [DOGFOODING.md](DOGFOODING.md) for comprehensive guidelines on:
+### Dogfooding During Development
 
-- **Daily development validation routines**
-- **Real competitive programming practice integration** 
-- **AI assistant workflow testing**
-- **Performance monitoring and quality metrics**
-- **Edge case discovery through actual usage**
+PrepKit is designed to be used during its own development. See [DOGFOODING.md](DOGFOODING.md) for practical usage guidelines:
 
-Key dogfooding practices:
+- **Real competitive programming practice integration**
+- **AI assistant workflow optimization** 
+- **Daily development routines**
+- **Performance monitoring through actual usage**
+
 ```bash
-# Quick health check
-poetry run pytest --tb=short -q
-
-# Test preprocessing with your own solutions  
+# Use PrepKit for your own competitive programming solutions
 cd src && python main.py cpp preprocess solution.cpp
 
 # Set up AI assistants for enhanced development
 poetry run python -m main ai-config setup claude-code
 ```
 
-This approach ensures PrepKit evolves based on real-world usage patterns and remains genuinely useful for competitive programming workflows.
+### Testing Strategy
+
+For comprehensive testing workflows, see [TESTING.md](TESTING.md):
+
+- **Multi-layered testing approach** (unit, integration, build verification)
+- **Performance benchmarking** and regression detection
+- **Test-driven development** patterns for new features
+- **Continuous integration** best practices
+
+```bash
+# Run comprehensive test suite
+poetry run pytest -v
+
+# Quick development validation
+poetry run pytest --tb=short -q
+```
+
+This dual approach ensures PrepKit evolves based on real-world usage while maintaining high code quality.
 
 ## Contributing
 
