@@ -1,29 +1,44 @@
 #include <iostream>
 #include <vector>
-#include <string>
 #include <algorithm>
+#include <string>
 #include <map>
 #include <set>
 #include <queue>
-#include <deque>
-#include <numeric>
+#include <stack>
+#include <cmath>
+#include <climits>
+using namespace std;
 
-// Include common competitive programming template (e.g., fast I/O, common macros)
-#include "template.hpp"
+// Common constants for competitive programming
+constexpr int MOD = 1000000007;
+constexpr int INF = 1e9;
+constexpr long long LINF = 1e18;
 
-void solve() {
-    // Your solution here
+// Fast I/O setup
+void fast_io() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cout.tie(nullptr);
 }
 
 int main() {
-    std::ios_base::sync_with_stdio(false);
-    std::cin.tie(NULL);
-
-    int t = 1; // Number of test cases
-    // std::cin >> t; // Uncomment for multiple test cases
-    while (t--) {
-        solve();
+    fast_io();
+    
+    // Read input
+    int n;
+    cin >> n;
+    
+    // Example: read array
+    vector<int> a(n);
+    for (int i = 0; i < n; i++) {
+        cin >> a[i];
     }
-
+    
+    // TODO: Implement your solution here
+    
+    // Example output
+    cout << "Answer: " << n << endl;
+    
     return 0;
 }

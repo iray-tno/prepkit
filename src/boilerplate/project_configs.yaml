@@ -1,21 +1,46 @@
-# Default configurations for different project types
+# PrepKit Project Type Configurations
 
 atcoder-algorithm:
-  description: Standard competitive programming setup for algorithm contests.
+  description: "AtCoder competitive programming setup with fast I/O and common utilities"
   cpp_preprocess:
     minify_output: false
-
-atcoder-heuristic:
-  description: Competitive programming setup for heuristic contests.
-  cpp_preprocess:
-    minify_output: false
+  contest_settings:
+    platform: "atcoder"
+    time_limit: "2s"
+    memory_limit: "1024MB"
+    mod_value: 1000000007
 
 codingame:
-  description: Setup for Codingame contests, often requiring aggressive minification.
+  description: "Codingame setup with aggressive minification for size constraints"
   cpp_preprocess:
     minify_output: true
+  contest_settings:
+    platform: "codingame"
+    size_limit: "100KB"
+    focus: "code_golf"
 
 kaggle:
-  description: Setup for Kaggle competitions, typically notebook-based.
+  description: "Kaggle competition setup with experiment tracking integration"
   cpp_preprocess:
     minify_output: false
+  experiment_settings:
+    wandb_integration: true
+    notebook_format: true
+
+icpc:
+  description: "ICPC team contest setup with collaborative features"
+  cpp_preprocess:
+    minify_output: false
+  contest_settings:
+    platform: "icpc" 
+    team_mode: true
+    time_limit: "5h"
+
+codeforces:
+  description: "Codeforces contest setup with fast template"
+  cpp_preprocess:
+    minify_output: false
+  contest_settings:
+    platform: "codeforces"
+    interactive: false
+    mod_value: 998244353
