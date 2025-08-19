@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": []
+  },
+  "description": "Claude Code disabled for contest environments where AI assistance is prohibited",
+  "contest_rules": {
+    "note": "This project is configured for a contest platform that prohibits AI assistance.",
+    "platforms": ["AtCoder algorithm contests", "ICPC", "Codeforces rated contests"],
+    "restriction": "All Claude Code tools are disabled to ensure compliance with contest rules"
+  }
+}

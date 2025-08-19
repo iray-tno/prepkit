@@ -9,15 +9,9 @@ atcoder-algorithm:
     time_limit: "2s"
     memory_limit: "1024MB"
     mod_value: 1000000007
-
-codingame:
-  description: "Codingame setup with aggressive minification for size constraints"
-  cpp_preprocess:
-    minify_output: true
-  contest_settings:
-    platform: "codingame"
-    size_limit: "100KB"
-    focus: "code_golf"
+  claude_config:
+    enabled: false
+    reason: "AtCoder algorithm contests prohibit AI assistance during contests"
 
 kaggle:
   description: "Kaggle competition setup with experiment tracking integration"
@@ -26,6 +20,9 @@ kaggle:
   experiment_settings:
     wandb_integration: true
     notebook_format: true
+  claude_config:
+    enabled: true
+    reason: "Kaggle allows AI assistance for experimentation and analysis"
 
 icpc:
   description: "ICPC team contest setup with collaborative features"
@@ -35,6 +32,9 @@ icpc:
     platform: "icpc" 
     team_mode: true
     time_limit: "5h"
+  claude_config:
+    enabled: false
+    reason: "ICPC contests prohibit external assistance including AI tools"
 
 codeforces:
   description: "Codeforces contest setup with fast template"
@@ -44,3 +44,18 @@ codeforces:
     platform: "codeforces"
     interactive: false
     mod_value: 998244353
+  claude_config:
+    enabled: false
+    reason: "Codeforces contests prohibit AI assistance during rated contests"
+
+codingame:
+  description: "Codingame setup with aggressive minification for size constraints"
+  cpp_preprocess:
+    minify_output: true
+  contest_settings:
+    platform: "codingame"
+    size_limit: "100KB"
+    focus: "code_golf"
+  claude_config:
+    enabled: true
+    reason: "Codingame allows AI assistance for optimization and learning"

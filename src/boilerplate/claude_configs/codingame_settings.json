@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(g++:*)",
+      "Bash(clang:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "TodoRead",
+      "TodoWrite"
+    ]
+  },
+  "description": "Claude Code enabled for Codingame - AI assistance allowed for optimization and learning",
+  "optimization_focus": {
+    "code_golf": true,
+    "size_constraints": true,
+    "performance_optimization": true,
+    "algorithm_learning": true
+  },
+  "restrictions": {
+    "no_file_creation": "Focus on optimizing existing code",
+    "minimal_permissions": "Limited to essential development tools"
+  }
+}

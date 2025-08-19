@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write", 
+      "Edit",
+      "MultiEdit",
+      "Glob",
+      "Grep",
+      "LS",
+      "TodoRead",
+      "TodoWrite",
+      "NotebookRead",
+      "NotebookEdit",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(jupyter:*)",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(cp:*)",
+      "Bash(touch:*)",
+      "Bash(kaggle:*)",
+      "Bash(wandb:*)"
+    ]
+  },
+  "description": "Claude Code enabled for Kaggle competitions - AI assistance allowed for experimentation and analysis",
+  "experiment_features": {
+    "wandb_integration": true,
+    "jupyter_support": true,
+    "data_analysis": true,
+    "feature_engineering": true
+  }
+}

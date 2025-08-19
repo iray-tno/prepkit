@@ -80,6 +80,39 @@ def new(project_name, lang, type):
             yaml.dump(prepkit_config_content, f, indent=2)
         click.echo(f"Generated prepkit_config.yaml for type '{type}' in {project_name}")
 
+        # Setup Claude Code settings based on contest type
+        claude_config = selected_config.get("claude_config", {})
+        if claude_config:
+            claude_dir = os.path.join(destination_path, ".claude")
+            os.makedirs(claude_dir, exist_ok=True)
+            
+            # Determine which Claude settings template to use
+            claude_settings_file = None
+            if claude_config.get("enabled", False):
+                platform = selected_config.get("contest_settings", {}).get("platform", "")
+                if platform == "kaggle":
+                    claude_settings_file = "kaggle_settings.json"
+                elif platform == "codingame":
+                    claude_settings_file = "codingame_settings.json"
+                else:
+                    claude_settings_file = "kaggle_settings.json"  # Default enabled config
+            else:
+                claude_settings_file = "disabled_settings.json"
+            
+            # Copy the appropriate Claude settings
+            if claude_settings_file:
+                claude_template_path = os.path.join(os.path.dirname(__file__), "boilerplate", "claude_configs", claude_settings_file)
+                claude_dest_path = os.path.join(claude_dir, "settings.local.json")
+                
+                try:
+                    shutil.copy2(claude_template_path, claude_dest_path)
+                    if claude_config.get("enabled", False):
+                        click.echo(f"✓ Claude Code enabled for {type} ({claude_config.get('reason', 'AI assistance allowed')})")
+                    else:
+                        click.echo(f"✗ Claude Code disabled for {type} ({claude_config.get('reason', 'Contest rules prohibit AI assistance')})")
+                except FileNotFoundError:
+                    click.echo(f"Warning: Claude settings template '{claude_settings_file}' not found", err=True)
+
     except Exception as e:
         click.echo(f"Error creating project: {e}", err=True)
 

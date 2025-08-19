@@ -1,0 +1,72 @@
+{
+  "tools": {
+    "bash": {
+      "enabled": true,
+      "description": "Execute shell commands for building, testing, and running PrepKit"
+    },
+    "read": {
+      "enabled": true,
+      "description": "Read source files, configs, and documentation"
+    },
+    "edit": {
+      "enabled": true,
+      "description": "Edit source code, configuration files, and documentation"
+    },
+    "write": {
+      "enabled": true,
+      "description": "Create new files when necessary"
+    },
+    "glob": {
+      "enabled": true,
+      "description": "Find files by patterns"
+    },
+    "grep": {
+      "enabled": true,
+      "description": "Search for code patterns and text"
+    }
+  },
+  "permissions": {
+    "allow_file_creation": true,
+    "allow_file_modification": true,
+    "allow_command_execution": true,
+    "restricted_paths": [
+      "/.git/",
+      "/node_modules/",
+      "/__pycache__/",
+      "/.venv/",
+      "/dist/",
+      "/build/"
+    ]
+  },
+  "context": {
+    "project_type": "competitive_programming_tool",
+    "languages": ["python", "cpp"],
+    "frameworks": ["click", "poetry", "libclang"],
+    "testing_frameworks": ["pytest", "syrupy", "hypothesis"],
+    "key_features": [
+      "C++ preprocessing and minification",
+      "Kaggle competition automation",
+      "WandB experiment tracking",
+      "Project template generation",
+      "Plugin architecture"
+    ]
+  },
+  "workflows": {
+    "development": [
+      "Run tests with pytest",
+      "Check type hints with mypy",
+      "Format code with ruff",
+      "Test C++ compilation",
+      "Validate preprocessing pipeline"
+    ],
+    "testing": [
+      "poetry run pytest",
+      "poetry run pytest --snapshot-update",
+      "poetry run python -m main --help"
+    ],
+    "building": [
+      "poetry build",
+      "poetry install"
+    ]
+  }
+}
