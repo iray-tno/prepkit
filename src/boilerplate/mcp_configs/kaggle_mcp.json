@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": ["serena"]
+    }
+  },
+  "description": "Kaggle competition MCP configuration with Serena for code assistance",
+  "features": {
+    "code_analysis": true,
+    "refactoring_support": true,
+    "experiment_optimization": true,
+    "data_science_workflows": true
+  }
+}

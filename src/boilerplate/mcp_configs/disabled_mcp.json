@@ -1,0 +1,8 @@
+{
+  "mcpServers": {},
+  "description": "MCP disabled for contest environments where external assistance is prohibited",
+  "contest_compliance": {
+    "platforms": ["AtCoder algorithm contests", "ICPC", "Codeforces rated contests"],
+    "restriction": "All MCP servers disabled to ensure compliance with contest rules"
+  }
+}
