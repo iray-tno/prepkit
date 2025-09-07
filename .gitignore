@@ -33,6 +33,7 @@ build/
 *.log
 temp_combined.cpp
 temp_minify.cpp
+temp/
 
 # Poetry
 .poetry/
