@@ -1,5 +1,7 @@
 # PrepKit
 
+English | [日本語](README.ja.md)
+
 A comprehensive tool to streamline competitive programming and machine learning workflows, written in Python. PrepKit automates code management, experiment tracking, and submission processes for platforms like Atcoder, Codingame, and Kaggle.
 
 ## Table of Contents
