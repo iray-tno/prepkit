@@ -20,17 +20,21 @@ A comprehensive tool to streamline competitive programming and machine learning 
 
 ### Python Dependencies
 
-PrepKit uses [Poetry](https://python-poetry.org/) for dependency management.
+PrepKit uses [uv](https://github.com/astral-sh/uv) for fast, reliable dependency management.
 
-1.  **Install Poetry** (if you haven't already):
+1.  **Install uv** (if you haven't already):
     ```bash
-    pip install poetry
+    # On macOS and Linux
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Or with pip
+    pip install uv
     ```
 2.  **Install Project Dependencies**: Navigate to the project root and run:
     ```bash
-    poetry install
+    uv sync
     ```
-    This will create a virtual environment and install all required Python packages.
+    This will create a virtual environment and install all required Python packages in seconds.
 
 ### System Dependencies
 
@@ -54,14 +58,14 @@ PrepKit relies on `libclang` for C++ parsing and `clang-format` for code formatt
 
 ## Usage
 
-All commands are executed via `poetry run prepkit <command>`.
+All commands are executed via `uv run prepkit <command>`.
 
 ### C++ Preprocessor
 
 The `cpp preprocess` command integrates multiple C++ files into a single file, replaces `constexpr` variables with their values, removes comments, and formats the code.
 
 ```bash
-poetry run prepkit cpp preprocess <file_path> [-I <include_path>]...
+uv run prepkit cpp preprocess <file_path> [-I <include_path>]...
 ```
 
 *   `<file_path>`: The path to the main C++ file to preprocess.
@@ -70,7 +74,7 @@ poetry run prepkit cpp preprocess <file_path> [-I <include_path>]...
 **Example:**
 
 ```bash
-poetry run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -I /usr/local/include
+uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -I /usr/local/include
 ```
 
 ### C++ Minifier
@@ -78,7 +82,7 @@ poetry run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -I /
 The `cpp minify` command aggressively removes whitespace and comments from a C++ file, making it suitable for platforms with strict code size limits.
 
 ```bash
-poetry run prepkit cpp minify <file_path>
+uv run prepkit cpp minify <file_path>
 ```
 
 *   `<file_path>`: The path to the C++ file to minify.
@@ -86,7 +90,7 @@ poetry run prepkit cpp minify <file_path>
 **Example:**
 
 ```bash
-poetry run prepkit cpp minify my_solution.cpp
+uv run prepkit cpp minify my_solution.cpp
 ```
 
 ### Project Management
@@ -96,7 +100,7 @@ PrepKit provides project scaffolding to quickly create boilerplate code for diff
 #### Create New Project
 
 ```bash
-poetry run prepkit project new <project_name> [--lang <language>] [--type <project_type>]
+uv run prepkit project new <project_name> [--lang <language>] [--type <project_type>]
 ```
 
 *   `<project_name>`: Name of the project directory to create
@@ -111,7 +115,7 @@ poetry run prepkit project new <project_name> [--lang <language>] [--type <proje
 **Example:**
 
 ```bash
-poetry run prepkit project new my_contest --lang cpp --type atcoder-algorithm
+uv run prepkit project new my_contest --lang cpp --type atcoder-algorithm
 ```
 
 This creates a new directory with boilerplate code and a `prepkit_config.yaml` file configured for the specified platform.
@@ -125,7 +129,7 @@ PrepKit provides commands to automate common Kaggle workflows.
 Pushes a Jupyter notebook or Python script to Kaggle Kernels.
 
 ```bash
-poetry run prepkit kaggle push-notebook <notebook_file> [--title <title>] [--slug <slug>] [--language <language>] [--private|--public]
+uv run prepkit kaggle push-notebook <notebook_file> [--title <title>] [--slug <slug>] [--language <language>] [--private|--public]
 ```
 
 *   `<notebook_file>`: Path to the `.ipynb` or `.py` file.
@@ -139,7 +143,7 @@ poetry run prepkit kaggle push-notebook <notebook_file> [--title <title>] [--slu
 **Example:**
 
 ```bash
-poetry run prepkit kaggle push-notebook my_notebook.ipynb --title "My Kaggle Analysis" --public
+uv run prepkit kaggle push-notebook my_notebook.ipynb --title "My Kaggle Analysis" --public
 ```
 
 #### Submit Competition
@@ -147,7 +151,7 @@ poetry run prepkit kaggle push-notebook my_notebook.ipynb --title "My Kaggle Ana
 Submits a prediction file to a Kaggle competition.
 
 ```bash
-poetry run prepkit kaggle submit-competition <submission_file> --competition <competition_name> [--message <message>]
+uv run prepkit kaggle submit-competition <submission_file> --competition <competition_name> [--message <message>]
 ```
 
 *   `<submission_file>`: Path to the submission CSV or other required file.
@@ -157,7 +161,7 @@ poetry run prepkit kaggle submit-competition <submission_file> --competition <co
 **Example:**
 
 ```bash
-poetry run prepkit kaggle submit-competition submission.csv --competition titanic --message "First submission with new model"
+uv run prepkit kaggle submit-competition submission.csv --competition titanic --message "First submission with new model"
 ```
 
 ### Experiment Management
@@ -169,7 +173,7 @@ PrepKit integrates with Hydra, Optuna, and Weights & Biases (WandB) for structur
 Runs an experiment based on a Hydra configuration file.
 
 ```bash
-poetry run prepkit experiment run <config_path> <config_name>
+uv run prepkit experiment run <config_path> <config_name>
 ```
 
 *   `<config_path>`: The path to your Hydra configuration directory (relative to the project root).
@@ -192,13 +196,13 @@ wandb:
 Run the experiment:
 
 ```bash
-poetry run prepkit experiment run conf config
+uv run prepkit experiment run conf config
 ```
 
 You can override parameters from the command line:
 
 ```bash
-poetry run prepkit experiment run conf config params.learning_rate=0.005
+uv run prepkit experiment run conf config params.learning_rate=0.005
 ```
 
 #### Optimize Hyperparameters
@@ -206,7 +210,7 @@ poetry run prepkit experiment run conf config params.learning_rate=0.005
 Performs hyperparameter optimization using Optuna, tracking results with WandB.
 
 ```bash
-poetry run prepkit experiment optimize <config_path> <config_name>
+uv run prepkit experiment optimize <config_path> <config_name>
 ```
 
 *   `<config_path>`: The path to your Hydra configuration directory (relative to the project root). This config should define the search space for Optuna.
@@ -251,7 +255,7 @@ search_space:
 Run the optimization:
 
 ```bash
-poetry run prepkit experiment optimize conf optuna_config hydra.sweeper.sampler.seed=42
+uv run prepkit experiment optimize conf optuna_config hydra.sweeper.sampler.seed=42
 ```
 
 ## Testing
@@ -262,22 +266,22 @@ PrepKit includes a comprehensive test suite with multiple testing strategies to 
 
 **Run all tests:**
 ```bash
-poetry run pytest
+uv run pytest
 ```
 
 **Run specific test categories:**
 ```bash
 # Unit tests only
-poetry run pytest tests/test_cpp_preprocessor.py
+uv run pytest tests/test_cpp_preprocessor.py
 
 # Integration tests only  
-poetry run pytest tests/test_cpp_integration.py
+uv run pytest tests/test_cpp_integration.py
 
 # Build verification tests (requires g++)
-poetry run pytest -m build
+uv run pytest -m build
 
 # Performance benchmarks
-poetry run pytest --benchmark-only
+uv run pytest --benchmark-only
 ```
 
 ### Test Structure
@@ -386,7 +390,7 @@ PrepKit is designed to be used during its own development. See [DOGFOODING.md](D
 cd src && python main.py cpp preprocess solution.cpp
 
 # Set up AI assistants for enhanced development
-poetry run python -m main ai-config setup claude-code
+uv run python -m main ai-config setup claude-code
 ```
 
 ### Testing Strategy
@@ -400,10 +404,10 @@ For comprehensive testing workflows, see [TESTING.md](TESTING.md):
 
 ```bash
 # Run comprehensive test suite
-poetry run pytest -v
+uv run pytest -v
 
 # Quick development validation
-poetry run pytest --tb=short -q
+uv run pytest --tb=short -q
 ```
 
 This dual approach ensures PrepKit evolves based on real-world usage while maintaining high code quality.
@@ -415,10 +419,10 @@ Contributions are welcome! Please refer to the development plan (`競技プロ�
 ### Development Setup
 
 1. **Clone the repository**
-2. **Install dependencies**: `poetry install`
+2. **Install dependencies**: `uv sync`
 3. **Install system dependencies**: `libclang-18` and `clang-format`
-4. **Run tests**: `poetry run pytest`
-5. **Check build verification**: `poetry run pytest -m build`
+4. **Run tests**: `uv run pytest`
+5. **Check build verification**: `uv run pytest -m build`
 
 ### Pull Request Guidelines
 
