@@ -11,6 +11,7 @@ from base_interfaces import BasePreprocessor, BaseMinifier
 from plugins.cpp_plugin import CppPreprocessor
 
 @click.group()
+@click.version_option(importlib.metadata.version("prepkit"), "-v", "--version", prog_name="prepkit")
 def cli():
     pass
 
