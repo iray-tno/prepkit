@@ -25,11 +25,11 @@ def cpp_group():
     """C++ preprocessor and minifier."""
     pass
 
-cpp_preprocessor_instance = CppPreprocessor()
 @cpp_group.command(name="preprocess")
 @click.argument('file', type=click.Path(exists=True, resolve_path=True))
 @click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True))
 def cpp_preprocess_cmd(file, include_paths):
+    cpp_preprocessor_instance = CppPreprocessor()
     result = cpp_preprocessor_instance.preprocess(file, list(include_paths))
     click.echo(result)
 
@@ -177,11 +177,10 @@ def load_plugins(group_name, base_class):
         except Exception as e:
             click.echo(f"Error loading plugin {entry_point.name}: {e}", err=True)
 
-# Load preprocessor plugins
-load_plugins("prepkit.preprocessors", BasePreprocessor)
-
-# Load minifier plugins
-load_plugins("prepkit.minifiers", BaseMinifier)
+# Plugin loading disabled for performance - plugins are not yet implemented
+# TODO: Enable lazy plugin loading when Rust/Kotlin plugins are ready
+# load_plugins("prepkit.preprocessors", BasePreprocessor)
+# load_plugins("prepkit.minifiers", BaseMinifier)
 
 if __name__ == "__main__":
     cli()
