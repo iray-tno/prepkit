@@ -5,18 +5,19 @@ import json
 import time
 import re
 from typing import Any, Dict, Optional
-try:
-    import wandb
-    WANDB_AVAILABLE = True
-except ImportError:
-    WANDB_AVAILABLE = False
 
 def _log_to_wandb(submission_info: Dict[str, Any], competition: str, message: str) -> None:
     """Log Kaggle submission information to WandB if available and currently running."""
+    try:
+        import wandb
+        WANDB_AVAILABLE = True
+    except ImportError:
+        WANDB_AVAILABLE = False
+
     if not WANDB_AVAILABLE:
         click.echo("WandB not available. Skipping experiment logging.")
         return
-        
+
     try:
         # Check if wandb is already initialized (i.e., we're in an active experiment)
         if wandb.run is not None:

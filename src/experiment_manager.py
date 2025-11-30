@@ -1,9 +1,4 @@
 import click
-import hydra
-from omegaconf import DictConfig, OmegaConf
-import optuna
-from optuna_integration.wandb import WeightsAndBiasesCallback
-import wandb
 from typing import Any, Dict, Optional
 
 @click.group()
@@ -16,6 +11,9 @@ def experiment() -> None:
 @click.argument('config_name', type=str)
 def run(config_path: str, config_name: str) -> None:
     """Runs an experiment based on a configuration file."""
+    import hydra
+    from omegaconf import DictConfig, OmegaConf
+
     click.echo(f"Running experiment with config: {config_path}/{config_name}")
 
     @hydra.main(config_path=config_path, config_name=config_name, version_base=None)
@@ -31,6 +29,12 @@ def run(config_path: str, config_name: str) -> None:
 @click.argument('config_name', type=str)
 def optimize(config_path: str, config_name: str) -> None:
     """Optimizes hyperparameters for an experiment using Optuna and WandB."""
+    import hydra
+    from omegaconf import DictConfig, OmegaConf
+    import optuna
+    from optuna_integration.wandb import WeightsAndBiasesCallback
+    import wandb
+
     click.echo(f"Optimizing hyperparameters with config: {config_path}/{config_name}")
 
     @hydra.main(config_path=config_path, config_name=config_name, version_base=None)
