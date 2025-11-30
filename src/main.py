@@ -8,7 +8,7 @@ from kaggle_automation import kaggle
 from experiment_manager import experiment
 from ai_assistant_config import ai_config
 from base_interfaces import BasePreprocessor, BaseMinifier
-from plugins.cpp_plugin import CppPreprocessor
+from plugins.cpp_plugin import CppPreprocessor, CppMinifier
 
 @click.group()
 @click.version_option(importlib.metadata.version("prepkit"), "-v", "--version", prog_name="prepkit")
@@ -31,6 +31,14 @@ def cpp_group():
 def cpp_preprocess_cmd(file, include_paths):
     cpp_preprocessor_instance = CppPreprocessor()
     result = cpp_preprocessor_instance.preprocess(file, list(include_paths))
+    click.echo(result)
+
+@cpp_group.command(name="minify")
+@click.argument('file', type=click.Path(exists=True, resolve_path=True))
+def cpp_minify_cmd(file):
+    """Minify C++ code by removing comments and excess whitespace."""
+    cpp_minifier_instance = CppMinifier()
+    result = cpp_minifier_instance.minify(file)
     click.echo(result)
 
 # Project command group
