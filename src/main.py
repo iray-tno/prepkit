@@ -97,7 +97,11 @@ def test(file, input_file, expected_file, preprocess, include_paths):
         os.remove(source_file)
 
     if compile_result.returncode != 0:
-        click.echo("❌ Compilation failed:", err=True)
+        click.echo("❌ Compilation failed", err=True)
+        click.echo(f"   Compiler: g++ -std=c++17", err=True)
+        click.echo(f"   Source: {os.path.basename(file)}", err=True)
+        click.echo("", err=True)
+        click.echo("Compiler output:", err=True)
         click.echo(compile_result.stderr, err=True)
         if os.path.exists(executable.name):
             os.remove(executable.name)

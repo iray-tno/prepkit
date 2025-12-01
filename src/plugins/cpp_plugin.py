@@ -41,7 +41,7 @@ class CppPreprocessor(BasePreprocessor):
                         files_to_scan.append(full_path)
 
         graph, in_degree = self._build_dependency_graph(list(all_files), all_include_paths)
-        sorted_files: List[str] | None = self._topological_sort(graph, in_degree, list(all_files))
+        sorted_files, cycle_files = self._topological_sort(graph, in_degree, list(all_files))
 
         if sorted_files:
             combined_content: str = ""
@@ -191,7 +191,12 @@ class CppPreprocessor(BasePreprocessor):
             os.remove(temp_file_path)
             return final_output
         else:
-            click.echo("Error: Circular dependency detected.", err=True)
+            # Show which files are involved in the circular dependency
+            click.echo("❌ Error: Circular dependency detected in include files", err=True)
+            click.echo("   Files involved in the cycle:", err=True)
+            for cycle_file in cycle_files:
+                click.echo(f"    • {os.path.basename(cycle_file)} ({cycle_file})", err=True)
+            click.echo("   Hint: Check #include directives in these files for circular references", err=True)
             return ""
 
     def get_supported_languages(self) -> List[str]:
@@ -221,11 +226,17 @@ class CppPreprocessor(BasePreprocessor):
                         found = True
                         break
                 if not found:
-                    click.echo(f"Warning: Could not find include file {include_file} in {file_path}", err=True)
+                    # Show searched paths for better debugging
+                    searched_paths = '\n    '.join([os.path.abspath(path) for path in include_paths])
+                    click.echo(f"❌ Error: Could not find include file '{include_file}'", err=True)
+                    click.echo(f"   Referenced in: {file_path}", err=True)
+                    click.echo(f"   Searched in:", err=True)
+                    click.echo(f"    {searched_paths}", err=True)
+                    click.echo(f"   Hint: Use -I/--include-path to specify additional search directories", err=True)
 
         return graph, in_degree
 
-    def _topological_sort(self, graph: Dict[str, List[str]], in_degree: Dict[str, int], all_files: List[str]) -> List[str] | None:
+    def _topological_sort(self, graph: Dict[str, List[str]], in_degree: Dict[str, int], all_files: List[str]) -> Tuple[List[str] | None, List[str]]:
         queue: deque[str] = deque([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
         sorted_order: List[str] = []
 
@@ -239,9 +250,11 @@ class CppPreprocessor(BasePreprocessor):
                     queue.append(neighbor)
 
         if len(sorted_order) == len(all_files):
-            return sorted_order
+            return sorted_order, []
         else:
-            return None
+            # Files not in sorted_order are part of the cycle
+            cycle_files = [f for f in all_files if os.path.abspath(f) not in sorted_order]
+            return None, cycle_files
 
 
 class CppMinifier(BaseMinifier):
