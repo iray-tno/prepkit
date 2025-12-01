@@ -130,8 +130,23 @@ class CppPreprocessor(BasePreprocessor):
             processed_content: str = "".join(processed_content_list)
 
             # Perform text-based constexpr replacement
+            # Protect string literals from replacement by temporarily replacing them
+            string_literals = []
+            def save_string(match):
+                string_literals.append(match.group(0))
+                return f"__STRING_LITERAL_{len(string_literals) - 1}__"
+
+            # Save string literals (both double and single quoted)
+            processed_content = re.sub(r'"(?:[^"\\]|\\.)*"', save_string, processed_content)
+            processed_content = re.sub(r"'(?:[^'\\]|\\.)*'", save_string, processed_content)
+
+            # Now do constexpr replacement (won't affect string literals)
             for name, value in constexpr_values.items():
                 processed_content = re.sub(r'\b' + re.escape(name) + r'\b', value, processed_content)
+
+            # Restore string literals
+            for i, literal in enumerate(string_literals):
+                processed_content = processed_content.replace(f"__STRING_LITERAL_{i}__", literal)
 
             # Remove comments using regex
             processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
