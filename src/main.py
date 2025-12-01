@@ -29,18 +29,32 @@ def cpp_group():
 @cpp_group.command(name="preprocess")
 @click.argument('file', type=click.Path(exists=True, resolve_path=True))
 @click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True))
-def cpp_preprocess_cmd(file, include_paths):
+@click.option('-o', '--output', 'output_file', type=click.Path(), help='Output file (default: stdout)')
+def cpp_preprocess_cmd(file, include_paths, output_file):
     cpp_preprocessor_instance = CppPreprocessor()
     result = cpp_preprocessor_instance.preprocess(file, list(include_paths))
-    click.echo(result)
+
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(result)
+        click.echo(f"✓ Preprocessed output written to: {output_file}")
+    else:
+        click.echo(result)
 
 @cpp_group.command(name="minify")
 @click.argument('file', type=click.Path(exists=True, resolve_path=True))
-def cpp_minify_cmd(file):
+@click.option('-o', '--output', 'output_file', type=click.Path(), help='Output file (default: stdout)')
+def cpp_minify_cmd(file, output_file):
     """Minify C++ code by removing comments and excess whitespace."""
     cpp_minifier_instance = CppMinifier()
     result = cpp_minifier_instance.minify(file)
-    click.echo(result)
+
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(result)
+        click.echo(f"✓ Minified output written to: {output_file}")
+    else:
+        click.echo(result)
 
 # Test command for competitive programming
 @cli.command()
