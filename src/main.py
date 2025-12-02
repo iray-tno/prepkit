@@ -4,12 +4,25 @@ import shutil
 import os
 import yaml
 import subprocess
+from typing import Dict, Any, List
 
 from kaggle_automation import kaggle
 from experiment_manager import experiment
 from ai_assistant_config import ai_config
 from base_interfaces import BasePreprocessor, BaseMinifier
 from plugins.cpp_plugin import CppPreprocessor, CppMinifier
+
+def load_config() -> Dict[str, Any]:
+    """Load prepkit_config.yaml from current directory if it exists."""
+    config_file_path = os.path.join(os.getcwd(), "prepkit_config.yaml")
+    if os.path.exists(config_file_path):
+        try:
+            with open(config_file_path, 'r') as f:
+                return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            click.echo(f"Warning: Error reading prepkit_config.yaml: {e}. Using defaults.", err=True)
+            return {}
+    return {}
 
 @click.group()
 @click.version_option(importlib.metadata.version("prepkit"), "-v", "--version", prog_name="prepkit")
@@ -28,11 +41,21 @@ def cpp_group():
 
 @cpp_group.command(name="preprocess")
 @click.argument('file', type=click.Path(exists=True, resolve_path=True))
-@click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True), help='Include paths (can be specified multiple times)')
 @click.option('-o', '--output', 'output_file', type=click.Path(), help='Output file (default: stdout)')
 def cpp_preprocess_cmd(file, include_paths, output_file):
+    # Load config and merge with CLI options (CLI takes precedence)
+    config = load_config()
+    config_include_paths = config.get("cpp_preprocess", {}).get("include_paths", [])
+
+    # CLI flags override config: start with config paths, then add CLI paths
+    all_include_paths = list(config_include_paths) + list(include_paths)
+
+    if config_include_paths:
+        click.echo(f"Using include paths from config: {', '.join(config_include_paths)}")
+
     cpp_preprocessor_instance = CppPreprocessor()
-    result = cpp_preprocessor_instance.preprocess(file, list(include_paths))
+    result = cpp_preprocessor_instance.preprocess(file, all_include_paths)
 
     if output_file:
         with open(output_file, 'w') as f:
@@ -68,11 +91,36 @@ def test(file, input_file, expected_file, preprocess, include_paths):
     import tempfile
     import sys
 
+    # Load config for defaults
+    config = load_config()
+    test_config = config.get("test", {})
+    cpp_compile_config = config.get("cpp_compile", {})
+
+    # Use config defaults if CLI options not provided
+    if not input_file and test_config.get("input_file"):
+        input_file = test_config["input_file"]
+        if os.path.exists(input_file):
+            click.echo(f"Using input file from config: {input_file}")
+
+    if not expected_file and test_config.get("expected_file"):
+        expected_file = test_config["expected_file"]
+        if os.path.exists(expected_file):
+            click.echo(f"Using expected file from config: {expected_file}")
+
+    timeout = test_config.get("timeout", 5)
+    compiler_std = cpp_compile_config.get("std", "c++17")
+    compiler_flags = cpp_compile_config.get("flags", [])
+
     # Determine source code to compile
     if preprocess:
         click.echo("Preprocessing...")
+        # Use config include paths + CLI include paths
+        cpp_preprocess_config = config.get("cpp_preprocess", {})
+        config_include_paths = cpp_preprocess_config.get("include_paths", [])
+        all_include_paths = list(config_include_paths) + list(include_paths)
+
         cpp_preprocessor = CppPreprocessor()
-        preprocessed_code = cpp_preprocessor.preprocess(file, list(include_paths))
+        preprocessed_code = cpp_preprocessor.preprocess(file, all_include_paths)
 
         # Write preprocessed code to temp file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.cpp', delete=False) as tmp:
@@ -85,9 +133,12 @@ def test(file, input_file, expected_file, preprocess, include_paths):
     executable = tempfile.NamedTemporaryFile(delete=False, suffix='.out')
     executable.close()
 
+    # Build compile command with config
+    compile_cmd = ['g++', source_file, '-o', executable.name, f'-std={compiler_std}'] + compiler_flags
+
     click.echo(f"Compiling {os.path.basename(file)}...")
     compile_result = subprocess.run(
-        ['g++', source_file, '-o', executable.name, '-std=c++17'],
+        compile_cmd,
         capture_output=True,
         text=True
     )
@@ -122,7 +173,7 @@ def test(file, input_file, expected_file, preprocess, include_paths):
         input=stdin_data,
         capture_output=True,
         text=True,
-        timeout=5
+        timeout=timeout
     )
 
     # Clean up executable
