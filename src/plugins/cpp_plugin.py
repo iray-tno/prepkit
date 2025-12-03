@@ -237,17 +237,25 @@ class CppPreprocessor(BasePreprocessor):
         return graph, in_degree
 
     def _topological_sort(self, graph: Dict[str, List[str]], in_degree: Dict[str, int], all_files: List[str]) -> Tuple[List[str] | None, List[str]]:
-        queue: deque[str] = deque([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
+        # Sort initial nodes for deterministic ordering
+        initial_nodes = sorted([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
+        queue: deque[str] = deque(initial_nodes)
         sorted_order: List[str] = []
 
         while queue:
             node: str = queue.popleft()
             sorted_order.append(node)
 
+            # Collect neighbors that become ready
+            neighbors_ready = []
             for neighbor in graph[node]:
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
-                    queue.append(neighbor)
+                    neighbors_ready.append(neighbor)
+
+            # Add sorted neighbors to maintain deterministic order
+            for neighbor in sorted(neighbors_ready):
+                queue.append(neighbor)
 
         if len(sorted_order) == len(all_files):
             return sorted_order, []
