@@ -5,7 +5,8 @@ import yaml
 from pathlib import Path
 from click.testing import CliRunner
 
-from main import cli, load_config
+from main import cli
+from config import load_config
 
 
 class TestConfigLoading:
