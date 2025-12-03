@@ -11,7 +11,9 @@ A comprehensive tool to streamline competitive programming and machine learning 
 - [Usage](#usage)
   - [C++ Preprocessor](#c-preprocessor)
   - [C++ Minifier](#c-minifier)
+  - [C++ Test Runner](#c-test-runner)
   - [Project Management](#project-management)
+  - [Configuration File](#configuration-file)
   - [Kaggle Automation](#kaggle-automation)
   - [Experiment Management](#experiment-management)
 - [Testing](#testing)
@@ -67,16 +69,21 @@ All commands are executed via `uv run prepkit <command>`.
 The `cpp preprocess` command integrates multiple C++ files into a single file, replaces `constexpr` variables with their values, removes comments, and formats the code.
 
 ```bash
-uv run prepkit cpp preprocess <file_path> [-I <include_path>]...
+uv run prepkit cpp preprocess <file_path> [-I <include_path>]... [-o <output_file>]
 ```
 
 *   `<file_path>`: The path to the main C++ file to preprocess.
 *   `-I <include_path>` / `--include-path <include_path>`: Optional. Specifies additional directories to search for included files. Can be used multiple times.
+*   `-o <output_file>` / `--output <output_file>`: Optional. Writes output to a file instead of stdout.
 
 **Example:**
 
 ```bash
-uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -I /usr/local/include
+# Output to stdout
+uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers
+
+# Write to file
+uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -o preprocessed.cpp
 ```
 
 ### C++ Minifier
@@ -84,16 +91,57 @@ uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -I /usr/
 The `cpp minify` command aggressively removes whitespace and comments from a C++ file, making it suitable for platforms with strict code size limits.
 
 ```bash
-uv run prepkit cpp minify <file_path>
+uv run prepkit cpp minify <file_path> [-o <output_file>]
 ```
 
 *   `<file_path>`: The path to the C++ file to minify.
+*   `-o <output_file>` / `--output <output_file>`: Optional. Writes output to a file instead of stdout.
 
 **Example:**
 
 ```bash
+# Output to stdout
 uv run prepkit cpp minify my_solution.cpp
+
+# Write to file
+uv run prepkit cpp minify my_solution.cpp -o minified.cpp
 ```
+
+### C++ Test Runner
+
+The `test` command compiles and runs C++ code with optional test input/output comparison. Perfect for competitive programming practice and validation.
+
+```bash
+uv run prepkit test <file_path> [-i <input_file>] [-e <expected_file>] [--preprocess] [-I <include_path>]...
+```
+
+*   `<file_path>`: The path to the C++ file to compile and run.
+*   `-i <input_file>` / `--input <input_file>`: Optional. Input file to feed to the program via stdin.
+*   `-e <expected_file>` / `--expected <expected_file>`: Optional. Expected output file for validation.
+*   `--preprocess`: Optional. Preprocess the file before compiling (resolves includes and constexpr).
+*   `-I <include_path>` / `--include-path <include_path>`: Optional. Include paths for preprocessing (only used with `--preprocess`).
+
+**Example:**
+
+```bash
+# Basic compilation and execution
+uv run prepkit test solution.cpp
+
+# With test input
+uv run prepkit test solution.cpp -i input.txt
+
+# With input and expected output verification
+uv run prepkit test solution.cpp -i input.txt -e expected.txt
+
+# Preprocess before testing
+uv run prepkit test solution.cpp --preprocess -I ./lib -i input.txt -e expected.txt
+```
+
+The test command will:
+1. Compile your code with `g++` (configurable via `prepkit_config.yaml`)
+2. Run the executable with optional input
+3. Compare output with expected results if provided
+4. Report success or failure with clear error messages
 
 ### Project Management
 
@@ -121,6 +169,59 @@ uv run prepkit project new my_contest --lang cpp --type atcoder-algorithm
 ```
 
 This creates a new directory with boilerplate code and a `prepkit_config.yaml` file configured for the specified platform.
+
+### Configuration File
+
+PrepKit supports project-level configuration via `prepkit_config.yaml` in your project directory. This allows you to set default values for commands, avoiding repetitive command-line flags.
+
+#### Configuration Structure
+
+```yaml
+project_type: atcoder-algorithm
+
+cpp_preprocess:
+  include_paths:
+    - ./lib
+    - ./includes
+  minify_output: false
+
+cpp_compile:
+  std: c++20
+  flags:
+    - "-O2"
+    - "-Wall"
+
+test:
+  timeout: 10
+  input_file: input.txt
+  expected_file: expected.txt
+```
+
+#### Configuration Options
+
+**`cpp_preprocess`**: Default settings for `cpp preprocess` command
+- `include_paths`: List of directories to search for include files (equivalent to `-I` flags)
+- `minify_output`: Whether to minify preprocessed output
+
+**`cpp_compile`**: Compiler settings used by `test` command
+- `std`: C++ standard (e.g., `c++11`, `c++17`, `c++20`)
+- `flags`: Additional compiler flags (e.g., `-O2`, `-Wall`)
+
+**`test`**: Default settings for `test` command
+- `timeout`: Maximum execution time in seconds (default: 5)
+- `input_file`: Default input file path
+- `expected_file`: Default expected output file path
+
+#### CLI Override
+
+Command-line flags always take precedence over config file values. For example:
+
+```bash
+# Config specifies ./lib as include path
+# This command adds ./extra to the search paths
+uv run prepkit cpp preprocess main.cpp -I ./extra
+# Result: searches in both ./lib (from config) and ./extra (from CLI)
+```
 
 ### Kaggle Automation
 
@@ -289,8 +390,8 @@ uv run pytest --benchmark-only
 ### Test Structure
 
 #### Unit Tests (`tests/test_cpp_preprocessor.py`)
-- **4 focused tests** for core C++ preprocessor functionality
-- Tests include resolution, constexpr replacement, comment removal, and minification
+- **7 focused tests** for core C++ preprocessor functionality
+- Tests include resolution, constexpr replacement (int, float, bool, string), comment removal, and minification
 - **Fast execution** (~1 second) for quick development feedback
 
 #### Integration Tests (`tests/test_cpp_integration.py`)
@@ -298,7 +399,21 @@ uv run pytest --benchmark-only
 - **Snapshot testing** with regression baselines using realistic competitive programming code
 - **Build verification** - Ensures preprocessed code compiles with `g++` (most critical)
 - **Property-based testing** with Hypothesis for robustness validation
-- **Performance benchmarks** - Validates processing speed (~730ms for typical files)
+- **Performance benchmarks** - Validates processing speed (~750ms for typical files)
+
+#### CLI Tests (`tests/test_cli.py`)
+- **17 tests** for command-line interface functionality
+- Config file loading and validation
+- Test runner with various options (input, expected output, preprocessing)
+- Output flag (`-o/--output`) for cpp commands
+- Version flag verification
+
+#### Error Handling Tests (`tests/test_error_messages.py`)
+- **9 tests** validating error messages and edge cases
+- Missing include error messages with helpful hints
+- Circular dependency detection
+- Compilation error handling
+- String literal protection in constexpr replacement
 
 #### Test Categories
 - **Snapshot Tests**: Regression testing with golden master files
@@ -360,18 +475,20 @@ my_lang = "my_plugin_package.my_module:MyLangMinifier"
 ## Current Status & Limitations
 
 ### ✅ Fully Implemented
-- **C++ Preprocessor**: Include resolution, integer constexpr replacement, comment removal
+- **C++ Preprocessor**: Include resolution, constexpr replacement (int, float, double, bool, char), comment removal
 - **C++ Minifier**: Size-optimized output while preserving compilation compatibility
+- **C++ Test Runner**: Compilation, execution, and output verification with config support
+- **Configuration System**: Project-level defaults via `prepkit_config.yaml`
 - **Project Scaffolding**: Boilerplate generation for AtCoder, Codingame, Kaggle
-- **Comprehensive Testing**: 17 tests including build verification and performance benchmarks
+- **Comprehensive Testing**: 45 tests including CLI tests, error handling, and build verification
 
 ### ⚠️ Known Limitations
-- **Constexpr Support**: Currently limited to integer literals (no floating-point, boolean, or complex expressions)
-- **String Constexpr**: String constant replacement not yet implemented
+- **Complex Constexpr**: Only supports literal values (e.g., `constexpr int X = 10`), not expressions (e.g., `constexpr int Y = X * 2`)
+- **String Constexpr**: String constant replacement is supported for basic literals
 - **Rust/Kotlin Plugins**: Placeholder implementations only
 
 ### 🔮 Future Enhancements
-- Extended constexpr support (floating-point, boolean, string literals)
+- Complex constexpr expression evaluation
 - Full Rust and Kotlin preprocessor implementations
 - Advanced optimization techniques
 - Integration with more competitive programming platforms
