@@ -183,7 +183,7 @@
   
     if (true) {
       std::cout << "Result: " << result << std::endl;
-      std::cout << "3.14159265359 approximation: " << 3.14159265359 << std::endl;
+      std::cout << "PI approximation: " << 3.14159265359 << std::endl;
       std::cout << "Max value: " << 1e18 << std::endl;
     }
   
