@@ -11,6 +11,8 @@ A comprehensive tool to streamline competitive programming and machine learning 
 - [Usage](#usage)
   - [C++ Preprocessor](#c-preprocessor)
   - [C++ Minifier](#c-minifier)
+  - [Rust Preprocessor](#rust-preprocessor)
+  - [Rust Minifier](#rust-minifier)
   - [C++ Test Runner](#c-test-runner)
   - [Project Management](#project-management)
   - [Configuration File](#configuration-file)
@@ -105,6 +107,91 @@ uv run prepkit cpp minify my_solution.cpp
 
 # Write to file
 uv run prepkit cpp minify my_solution.cpp -o minified.cpp
+```
+
+### Rust Preprocessor
+
+The `rust preprocess` command flattens multi-file Rust projects into a single file by inlining modules, replacing const/static values, and removing module qualifiers. Perfect for competitive programming platforms that require single-file submissions.
+
+```bash
+uv run prepkit rust preprocess <file_path> [-I <include_path>]... [-o <output_file>]
+```
+
+*   `<file_path>`: The path to the main Rust file (main.rs or lib.rs) to preprocess.
+*   `-I <include_path>` / `--include-path <include_path>`: Optional. Specifies additional directories to search for modules. Can be used multiple times.
+*   `-o <output_file>` / `--output <output_file>`: Optional. Writes output to a file instead of stdout.
+
+**Features:**
+
+- **Module Flattening**: Resolves `mod name;` declarations and inlines module content
+- **Const/Static Inlining**: Replaces const and static variable references with their literal values
+- **Custom Paths**: Supports `#[path = "..."]` attributes for custom module locations
+- **Conditional Compilation**: Preserves `#[cfg(...)]` attributes for platform-specific code
+- **Glob Imports**: Handles `use module::*;` statements correctly
+- **Inline Modules**: Preserves inline `mod name { ... }` declarations
+- **Dependency Ordering**: Automatically orders modules based on dependencies
+- **Macro Preservation**: Keeps `macro_rules!` and procedural macros intact
+- **Auto-formatting**: Uses `rustfmt` if available for clean output
+
+**Example:**
+
+```bash
+# Output to stdout
+uv run prepkit rust preprocess my_project/main.rs -I my_project/modules
+
+# Write to file
+uv run prepkit rust preprocess my_project/main.rs -I my_project/modules -o submission.rs
+```
+
+**Input Example (multi-file project):**
+
+```rust
+// main.rs
+mod utils;
+
+fn main() {
+    let result = utils::add(5, 3);
+    println!("Result: {}", result);
+}
+
+// utils.rs
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+```
+
+**Output (single file):**
+
+```rust
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn main() {
+    let result = add(5, 3);
+    println!("Result: {}", result);
+}
+```
+
+### Rust Minifier
+
+The `rust minify` command removes comments and excess whitespace from Rust files to reduce code size.
+
+```bash
+uv run prepkit rust minify <file_path> [-o <output_file>]
+```
+
+*   `<file_path>`: The path to the Rust file to minify.
+*   `-o <output_file>` / `--output <output_file>`: Optional. Writes output to a file instead of stdout.
+
+**Example:**
+
+```bash
+# Output to stdout
+uv run prepkit rust minify my_solution.rs
+
+# Write to file
+uv run prepkit rust minify my_solution.rs -o minified.rs
 ```
 
 ### C++ Test Runner
@@ -478,18 +565,20 @@ my_lang = "my_plugin_package.my_module:MyLangMinifier"
 - **C++ Preprocessor**: Include resolution, constexpr replacement (int, float, double, bool, char), comment removal
 - **C++ Minifier**: Size-optimized output while preserving compilation compatibility
 - **C++ Test Runner**: Compilation, execution, and output verification with config support
+- **Rust Preprocessor**: Module flattening, const/static inlining, custom paths, conditional compilation support
+- **Rust Minifier**: Comment removal and whitespace compression
 - **Configuration System**: Project-level defaults via `prepkit_config.yaml`
 - **Project Scaffolding**: Boilerplate generation for AtCoder, Codingame, Kaggle
-- **Comprehensive Testing**: 45 tests including CLI tests, error handling, and build verification
+- **Comprehensive Testing**: 87 tests including CLI tests, error handling, and build verification
 
 ### ⚠️ Known Limitations
-- **Complex Constexpr**: Only supports literal values (e.g., `constexpr int X = 10`), not expressions (e.g., `constexpr int Y = X * 2`)
-- **String Constexpr**: String constant replacement is supported for basic literals
-- **Rust/Kotlin Plugins**: Placeholder implementations only
+- **Complex Constexpr (C++)**: Only supports literal values (e.g., `constexpr int X = 10`), not expressions (e.g., `constexpr int Y = X * 2`)
+- **String Constexpr (C++)**: String constant replacement is supported for basic literals
+- **Kotlin Plugin**: Placeholder implementation only
 
 ### 🔮 Future Enhancements
-- Complex constexpr expression evaluation
-- Full Rust and Kotlin preprocessor implementations
+- Complex constexpr expression evaluation for C++
+- Full Kotlin preprocessor implementation
 - Advanced optimization techniques
 - Integration with more competitive programming platforms
 

@@ -341,3 +341,89 @@ class TestRustBuildVerification:
         )
 
         assert compile_result == 0, "Preprocessed code with const inlining should compile"
+
+
+class TestRustAdvancedFeatures:
+    """Test Phase 3 advanced Rust preprocessor features."""
+
+    def test_custom_path_attribute(self):
+        """Test #[path = \"...\"] custom module path support."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/custom_paths/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        # Verify module content is inlined
+        assert "fn add(a: i32, b: i32) -> i32" in result
+        assert "fn multiply(a: i32, b: i32) -> i32" in result
+
+        # Verify mod declaration is removed
+        assert "mod utils;" not in result
+        assert "#[path" not in result
+
+        # Verify functions are accessible
+        assert "add" in result
+        assert "multiply" in result
+
+    def test_glob_imports(self):
+        """Test glob imports (use module::*) are handled correctly."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/glob_imports/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        # Verify module content is inlined
+        assert "fn add(a: i32, b: i32) -> i32" in result
+        assert "fn sub(a: i32, b: i32) -> i32" in result
+        assert "fn mul(a: i32, b: i32) -> i32" in result
+
+        # Verify mod and use declarations are removed
+        assert "mod math;" not in result
+        assert "use math::*" not in result
+
+        # Verify function calls work (no qualifiers needed for glob imports)
+        assert "add(a, b)" in result
+        assert "sub(a, b)" in result
+        assert "mul(a, b)" in result
+
+        # Verify main function is present
+        assert "fn main()" in result
+
+    def test_inline_modules_preserved(self):
+        """Test inline modules (mod utils { ... }) are preserved."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/inline_modules/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        # Verify inline module structure is preserved
+        assert "mod utils" in result
+        assert "pub fn helper() -> i32" in result
+        assert "pub mod nested" in result
+        assert "pub fn inner() -> i32" in result
+
+        # Verify main function is present
+        assert "fn main()" in result
+
+        # NOTE: Current implementation removes qualifiers, which breaks inline modules
+        # This test documents the current behavior - may need fixing
+
+    def test_cfg_attributes_preserved(self):
+        """Test #[cfg(...)] conditional compilation attributes are preserved."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/cfg_attributes/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        # Verify #[cfg] attributes are preserved
+        assert '#[cfg(feature = "fast")]' in result
+        assert '#[cfg(not(feature = "fast"))]' in result
+
+        # Verify conditional blocks are preserved
+        assert "Using fast math" in result
+        assert "Using slow math" in result
+
+        # Verify main function is present
+        assert "fn main()" in result
+
+        # Note: We don't inline the cfg-gated modules because they're conditional

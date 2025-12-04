@@ -56,11 +56,16 @@ class RustPreprocessor(BasePreprocessor):
             # Remove module qualifiers like utils:: from function calls
             qualifier_regex: re.Pattern = re.compile(r'\b\w+::(?=\w+)', re.MULTILINE)
 
+            # Regex to match #[path = "..."] attributes (to remove them after processing)
+            path_attr_regex: re.Pattern = re.compile(r'#\[path\s*=\s*"[^"]+"\]\s*\n?', re.MULTILINE)
+
             for f in sorted_files:
                 with open(f, 'r') as source_file:
                     source_content: str = source_file.read()
                     # Remove mod declarations (they're being inlined)
                     source_content = mod_regex.sub("", source_content)
+                    # Remove #[path = "..."] attributes (after we've used them)
+                    source_content = path_attr_regex.sub("", source_content)
                     # Remove internal use statements (but keep std, core, alloc)
                     source_content = use_regex.sub("", source_content)
                     combined_content += source_content + "\n"
@@ -111,6 +116,10 @@ class RustPreprocessor(BasePreprocessor):
         """
         Discover all modules referenced via 'mod' declarations.
 
+        Supports:
+        - Standard mod declarations: mod utils;
+        - Custom paths: #[path = "my_file.rs"] mod utils;
+
         Args:
             file_path: Starting file path
             include_paths: Directories to search for modules
@@ -122,6 +131,11 @@ class RustPreprocessor(BasePreprocessor):
         # Match: mod module_name; or pub mod module_name;
         # Note: This won't match inline modules like "mod utils { ... }"
         mod_regex: re.Pattern = re.compile(r'^\s*(?:pub\s+)?mod\s+(\w+)\s*;', re.MULTILINE)
+        # Match: #[path = "custom/path.rs"] appearing before mod declaration
+        path_attr_regex: re.Pattern = re.compile(r'#\[path\s*=\s*"([^"]+)"\]', re.MULTILINE)
+        # Match: #[cfg(...)] appearing before mod declaration
+        cfg_attr_regex: re.Pattern = re.compile(r'#\[cfg\([^)]+\)\]', re.MULTILINE)
+
         files_to_scan: List[str] = [file_path]
 
         while files_to_scan:
@@ -129,10 +143,34 @@ class RustPreprocessor(BasePreprocessor):
             with open(current_file, 'r') as f:
                 content: str = f.read()
 
+            # Find all mod declarations with their positions
             for match in mod_regex.finditer(content):
                 module_name: str = match.group(1)
+                custom_path: Optional[str] = None
+
+                # Check if there's a #[cfg(...)] attribute before this mod declaration
+                # If so, skip this module (it's conditionally compiled)
+                content_before_mod = content[:match.start()]
+                cfg_matches = list(cfg_attr_regex.finditer(content_before_mod))
+                if cfg_matches:
+                    last_cfg_match = cfg_matches[-1]
+                    # If #[cfg] is within 100 chars of mod declaration, skip this module
+                    if match.start() - last_cfg_match.end() < 100:
+                        # Skip cfg-gated modules - they should be preserved as-is
+                        continue
+
+                # Check if there's a #[path = "..."] attribute before this mod declaration
+                # Look backwards from the mod declaration
+                # Find the last #[path = "..."] in the content before this mod
+                path_matches = list(path_attr_regex.finditer(content_before_mod))
+                if path_matches:
+                    # Check if the #[path = ...] is close to the mod (within ~100 chars)
+                    last_path_match = path_matches[-1]
+                    if match.start() - last_path_match.end() < 100:
+                        custom_path = last_path_match.group(1)
+
                 module_file: Optional[str] = self._resolve_module_path(
-                    module_name, current_file, include_paths
+                    module_name, current_file, include_paths, custom_path
                 )
 
                 if module_file is None:
@@ -146,12 +184,13 @@ class RustPreprocessor(BasePreprocessor):
         return all_files
 
     def _resolve_module_path(
-        self, module_name: str, current_file: str, include_paths: List[str]
+        self, module_name: str, current_file: str, include_paths: List[str], custom_path: Optional[str] = None
     ) -> Optional[str]:
         """
         Resolve a module name to its file path following Rust conventions.
 
         Rust module resolution:
+        - #[path = "custom.rs"] mod foo; uses custom path
         - mod foo; looks for foo.rs or foo/mod.rs
         - Search in: current file's directory, then include_paths
 
@@ -159,11 +198,29 @@ class RustPreprocessor(BasePreprocessor):
             module_name: Name of the module (e.g., "utils")
             current_file: Path to file containing the mod declaration
             include_paths: Additional search paths
+            custom_path: Optional custom path from #[path = "..."] attribute
 
         Returns:
             Absolute path to module file, or None if not found
         """
         current_dir: str = os.path.dirname(current_file)
+
+        # If custom path is specified via #[path = "..."], use it directly
+        if custom_path:
+            # Custom path is relative to the current file's directory
+            custom_full_path = os.path.join(current_dir, custom_path)
+            if os.path.exists(custom_full_path):
+                return os.path.abspath(custom_full_path)
+            else:
+                click.echo(
+                    f"❌ Error: Custom path '{custom_path}' for module '{module_name}' not found",
+                    err=True
+                )
+                click.echo(f"   Referenced in: {current_file}", err=True)
+                click.echo(f"   Looked for: {custom_full_path}", err=True)
+                return None
+
+        # Standard module resolution
         search_paths: List[str] = [current_dir] + include_paths
 
         for path in search_paths:
@@ -209,6 +266,8 @@ class RustPreprocessor(BasePreprocessor):
         in_degree: Dict[str, int] = defaultdict(int)
 
         mod_regex: re.Pattern = re.compile(r'^\s*(?:pub\s+)?mod\s+(\w+)\s*;', re.MULTILINE)
+        path_attr_regex: re.Pattern = re.compile(r'#\[path\s*=\s*"([^"]+)"\]', re.MULTILINE)
+        cfg_attr_regex: re.Pattern = re.compile(r'#\[cfg\([^)]+\)\]', re.MULTILINE)
 
         for file_path in files:
             if not os.path.exists(file_path):
@@ -219,8 +278,27 @@ class RustPreprocessor(BasePreprocessor):
 
             for match in mod_regex.finditer(content):
                 module_name: str = match.group(1)
+                custom_path: Optional[str] = None
+
+                # Check if there's a #[cfg(...)] attribute before this mod declaration
+                # If so, skip this module (it's conditionally compiled)
+                content_before_mod = content[:match.start()]
+                cfg_matches = list(cfg_attr_regex.finditer(content_before_mod))
+                if cfg_matches:
+                    last_cfg_match = cfg_matches[-1]
+                    if match.start() - last_cfg_match.end() < 100:
+                        # Skip cfg-gated modules
+                        continue
+
+                # Check for #[path = "..."] attribute before this mod
+                path_matches = list(path_attr_regex.finditer(content_before_mod))
+                if path_matches:
+                    last_path_match = path_matches[-1]
+                    if match.start() - last_path_match.end() < 100:
+                        custom_path = last_path_match.group(1)
+
                 module_file: Optional[str] = self._resolve_module_path(
-                    module_name, file_path, include_paths
+                    module_name, file_path, include_paths, custom_path
                 )
 
                 if module_file:
