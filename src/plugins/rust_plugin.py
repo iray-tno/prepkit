@@ -2,9 +2,10 @@ import click
 import os
 import re
 import subprocess
-from collections import defaultdict, deque
+from collections import defaultdict
 from typing import List, Tuple, Dict, Set, Optional
 from base_interfaces import BasePreprocessor, BaseMinifier
+from preprocessing_utils import topological_sort_files, StringLiteralProtector, report_circular_dependency_error
 
 
 class RustPreprocessor(BasePreprocessor):
@@ -42,7 +43,7 @@ class RustPreprocessor(BasePreprocessor):
         graph, in_degree = self._build_dependency_graph(list(all_files), all_include_paths)
 
         # Topological sort
-        sorted_files, cycle_files = self._topological_sort(graph, in_degree, list(all_files))
+        sorted_files, cycle_files = topological_sort_files(graph, in_degree, list(all_files))
 
         if sorted_files:
             # Combine files in dependency order
@@ -102,12 +103,8 @@ class RustPreprocessor(BasePreprocessor):
 
             return combined_content
         else:
-            # Show which files are involved in the circular dependency
-            click.echo("❌ Error: Circular dependency detected in module files", err=True)
-            click.echo("   Files involved in the cycle:", err=True)
-            for cycle_file in cycle_files:
-                click.echo(f"    • {os.path.basename(cycle_file)} ({cycle_file})", err=True)
-            click.echo("   Hint: Check mod declarations in these files for circular references", err=True)
+            # Report circular dependency error
+            report_circular_dependency_error(cycle_files, language="Rust")
             return ""
 
     def _discover_modules(self, file_path: str, include_paths: List[str]) -> Optional[Set[str]]:
@@ -233,49 +230,6 @@ class RustPreprocessor(BasePreprocessor):
 
         return graph, in_degree
 
-    def _topological_sort(
-        self, graph: Dict[str, List[str]], in_degree: Dict[str, int], all_files: List[str]
-    ) -> Tuple[Optional[List[str]], List[str]]:
-        """
-        Topological sort of module dependencies.
-
-        Args:
-            graph: Dependency graph (A -> [B] means A is imported by B)
-            in_degree: Number of dependencies for each file
-            all_files: All files to sort
-
-        Returns:
-            Tuple of (sorted_files, cycle_files) where:
-            - sorted_files: List of files in dependency order (None if cycle detected)
-            - cycle_files: Files involved in circular dependency (empty if no cycle)
-        """
-        # Sort initial nodes for deterministic ordering
-        initial_nodes = sorted([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
-        queue: deque[str] = deque(initial_nodes)
-        sorted_order: List[str] = []
-
-        while queue:
-            node: str = queue.popleft()
-            sorted_order.append(node)
-
-            # Collect neighbors that become ready
-            neighbors_ready = []
-            for neighbor in graph[node]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    neighbors_ready.append(neighbor)
-
-            # Add sorted neighbors to maintain deterministic order
-            for neighbor in sorted(neighbors_ready):
-                queue.append(neighbor)
-
-        if len(sorted_order) == len(all_files):
-            return sorted_order, []
-        else:
-            # Files not in sorted_order are part of the cycle
-            cycle_files = [f for f in all_files if os.path.abspath(f) not in sorted_order]
-            return None, cycle_files
-
     def _extract_const_values(self, content: str) -> Dict[str, str]:
         """
         Extract const and static declarations and their values.
@@ -326,25 +280,10 @@ class RustPreprocessor(BasePreprocessor):
         content = re.sub(r'const\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?', '', content)
         content = re.sub(r'static\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?', '', content)
 
-        # Protect string literals from replacement
-        string_literals: List[str] = []
-
-        def save_string(match):
-            string_literals.append(match.group(0))
-            return f"__STRING_LITERAL_{len(string_literals) - 1}__"
-
-        # Save string literals (both double and single quoted)
-        content = re.sub(r'"(?:[^"\\]|\\.)*"', save_string, content)
-        content = re.sub(r"'(?:[^'\\]|\\.)*'", save_string, content)
-
-        # Now do const replacement (won't affect string literals)
-        for name, value in const_map.items():
-            # Replace whole word matches only
-            content = re.sub(r'\b' + re.escape(name) + r'\b', value, content)
-
-        # Restore string literals
-        for i, literal in enumerate(string_literals):
-            content = content.replace(f"__STRING_LITERAL_{i}__", literal)
+        # Use StringLiteralProtector to safely replace const values
+        with StringLiteralProtector(content) as protected:
+            for name, value in const_map.items():
+                content = protected.replace(name, value)
 
         return content
 

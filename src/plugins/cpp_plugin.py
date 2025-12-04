@@ -1,12 +1,13 @@
 import click
 import os
 import re
-from collections import defaultdict, deque
+from collections import defaultdict
 import clang.cindex
 import subprocess
 import yaml
 from typing import List, Tuple, Dict, Set, Any
 from base_interfaces import BasePreprocessor, BaseMinifier
+from preprocessing_utils import topological_sort_files, StringLiteralProtector, report_circular_dependency_error
 
 # Set libclang path once when the module is imported
 try:
@@ -41,7 +42,7 @@ class CppPreprocessor(BasePreprocessor):
                         files_to_scan.append(full_path)
 
         graph, in_degree = self._build_dependency_graph(list(all_files), all_include_paths)
-        sorted_files, cycle_files = self._topological_sort(graph, in_degree, list(all_files))
+        sorted_files, cycle_files = topological_sort_files(graph, in_degree, list(all_files))
 
         if sorted_files:
             combined_content: str = ""
@@ -129,24 +130,10 @@ class CppPreprocessor(BasePreprocessor):
             processed_content_list.append(formatted_content[current_offset:])
             processed_content: str = "".join(processed_content_list)
 
-            # Perform text-based constexpr replacement
-            # Protect string literals from replacement by temporarily replacing them
-            string_literals = []
-            def save_string(match):
-                string_literals.append(match.group(0))
-                return f"__STRING_LITERAL_{len(string_literals) - 1}__"
-
-            # Save string literals (both double and single quoted)
-            processed_content = re.sub(r'"(?:[^"\\]|\\.)*"', save_string, processed_content)
-            processed_content = re.sub(r"'(?:[^'\\]|\\.)*'", save_string, processed_content)
-
-            # Now do constexpr replacement (won't affect string literals)
-            for name, value in constexpr_values.items():
-                processed_content = re.sub(r'\b' + re.escape(name) + r'\b', value, processed_content)
-
-            # Restore string literals
-            for i, literal in enumerate(string_literals):
-                processed_content = processed_content.replace(f"__STRING_LITERAL_{i}__", literal)
+            # Perform text-based constexpr replacement using StringLiteralProtector
+            with StringLiteralProtector(processed_content) as protected:
+                for name, value in constexpr_values.items():
+                    processed_content = protected.replace(name, value)
 
             # Remove comments using regex
             processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
@@ -191,12 +178,8 @@ class CppPreprocessor(BasePreprocessor):
             os.remove(temp_file_path)
             return final_output
         else:
-            # Show which files are involved in the circular dependency
-            click.echo("❌ Error: Circular dependency detected in include files", err=True)
-            click.echo("   Files involved in the cycle:", err=True)
-            for cycle_file in cycle_files:
-                click.echo(f"    • {os.path.basename(cycle_file)} ({cycle_file})", err=True)
-            click.echo("   Hint: Check #include directives in these files for circular references", err=True)
+            # Report circular dependency error
+            report_circular_dependency_error(cycle_files, language="C++")
             return ""
 
     def get_supported_languages(self) -> List[str]:
@@ -235,34 +218,6 @@ class CppPreprocessor(BasePreprocessor):
                     click.echo(f"   Hint: Use -I/--include-path to specify additional search directories", err=True)
 
         return graph, in_degree
-
-    def _topological_sort(self, graph: Dict[str, List[str]], in_degree: Dict[str, int], all_files: List[str]) -> Tuple[List[str] | None, List[str]]:
-        # Sort initial nodes for deterministic ordering
-        initial_nodes = sorted([f for f in all_files if in_degree[os.path.abspath(f)] == 0])
-        queue: deque[str] = deque(initial_nodes)
-        sorted_order: List[str] = []
-
-        while queue:
-            node: str = queue.popleft()
-            sorted_order.append(node)
-
-            # Collect neighbors that become ready
-            neighbors_ready = []
-            for neighbor in graph[node]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    neighbors_ready.append(neighbor)
-
-            # Add sorted neighbors to maintain deterministic order
-            for neighbor in sorted(neighbors_ready):
-                queue.append(neighbor)
-
-        if len(sorted_order) == len(all_files):
-            return sorted_order, []
-        else:
-            # Files not in sorted_order are part of the cycle
-            cycle_files = [f for f in all_files if os.path.abspath(f) not in sorted_order]
-            return None, cycle_files
 
 
 class CppMinifier(BaseMinifier):
