@@ -420,15 +420,36 @@ class RustMinifier(BaseMinifier):
         with open(file_path, 'r') as f:
             content = f.read()
 
-        # Remove comments
-        content = re.sub(r'//.*$', '', content, flags=re.MULTILINE)
-        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+        # Use StringLiteralProtector to safely handle string literals
+        with StringLiteralProtector(content) as protected:
+            # Remove single-line comments (safe because strings are protected)
+            protected.working_content = re.sub(r'//.*$', '', protected.working_content, flags=re.MULTILINE)
+            # Remove multi-line comments
+            protected.working_content = re.sub(r'/\*.*?\*/', '', protected.working_content, flags=re.DOTALL)
+            
+            # Remove leading/trailing whitespace from each line and compress whitespace
+            lines = protected.working_content.split('\n')
+            minified_lines = []
 
-        # Basic whitespace compression
-        lines = content.split('\n')
-        minified_lines = [line.strip() for line in lines if line.strip()]
+            for line in lines:
+                line = line.strip()
+                if line:
+                    # Compress multiple spaces into single space
+                    line = re.sub(r'\s+', ' ', line)
+                    # Remove spaces around operators and punctuation
+                    line = re.sub(r'\s*([{}()\[\];,:])\s*', r'\1', line)
+                    # Remove spaces around operators
+                    line = re.sub(r'\s*([+\-*/%=<>!&|^])\s*', r'\1', line)
+                    minified_lines.append(line)
 
-        return '\n'.join(minified_lines)
+            protected.working_content = '\n'.join(minified_lines)
+            
+            # Restore string literals
+            result = protected.working_content
+            for i, literal in enumerate(protected.string_literals):
+                result = result.replace(f"__STRING_LITERAL_{i}__", literal)
+
+        return result
 
     def get_supported_languages(self) -> list[str]:
         """Return list of supported languages."""

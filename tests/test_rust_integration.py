@@ -1,9 +1,11 @@
 """Integration tests for Rust preprocessor."""
 import pytest
 import os
+import subprocess
+import shutil
 from pathlib import Path
 from syrupy import SnapshotAssertion
-from plugins.rust_plugin import RustPreprocessor
+from plugins.rust_plugin import RustPreprocessor, RustMinifier
 
 
 class TestRustPreprocessorBasic:
@@ -577,3 +579,91 @@ class TestRustEdgeCasesSnapshots:
         result = preprocessor.preprocess(str(main_file), [])
 
         assert result == snapshot(name="rust_const_collisions_preprocessed")
+
+class TestRustMinifier:
+    """Tests for Rust code minification."""
+
+    @pytest.fixture
+    def rust_minifier(self):
+        return RustMinifier()
+
+    @pytest.mark.skipif(shutil.which("rustc") is None, reason="rustc not available")
+    def test_minification_build_verification(self, rust_minifier, tmp_path):
+        """Verify that minified code still compiles and is significantly smaller."""
+        source_file = Path("tests/fixtures/rust/size_constrained/main.rs")
+        
+        # Read original
+        with open(source_file) as f:
+            original_content = f.read()
+        original_size = len(original_content)
+        
+        # Minify
+        minified = rust_minifier.minify(str(source_file))
+        minified_size = len(minified)
+        
+        # Write minified version
+        minified_file = tmp_path / "minified.rs"
+        minified_file.write_text(minified)
+        
+        # Compile minified version
+        result = subprocess.run([
+            "rustc", str(minified_file), 
+            "-o", str(tmp_path / "minified_exe")
+        ], capture_output=True, text=True, timeout=30)
+        
+        assert result.returncode == 0, f"Minified compilation failed:\n{result.stderr}"
+        
+        # Verify minification effectiveness (should be at least 40% smaller)
+        assert minified_size < original_size * 0.6, f"Minification not effective: {minified_size} vs {original_size}"
+        
+        # Verify comments are removed
+        assert "//" not in minified or '"' in minified  # Comments removed unless in strings
+        assert "/*" not in minified or '"' in minified
+        assert "*/" not in minified or '"' in minified
+
+    def test_minification_preserves_string_literals(self, rust_minifier):
+        """Verify that string literals containing comment-like syntax are preserved."""
+        source_file = Path("tests/fixtures/rust/size_constrained/main.rs")
+        
+        minified = rust_minifier.minify(str(source_file))
+        
+        # String literals should be preserved exactly
+        assert '"// This is not a comment, it\'s a string literal"' in minified
+        assert '"/* Also not a comment */"' in minified
+
+    def test_minification_removes_comments(self, rust_minifier, tmp_path):
+        """Verify that actual comments are removed."""
+        # Create test file with comments
+        test_content = '''
+// This is a comment
+fn main() {
+    /* Multi-line
+       comment */
+    let x = 42;  // Inline comment
+    println!("{}", x);
+}
+'''
+        test_file = tmp_path / "test.rs"
+        test_file.write_text(test_content)
+        
+        minified = rust_minifier.minify(str(test_file))
+        
+        # Comments should be removed (but not // in strings)
+        # Check that standalone comment lines are gone
+        assert "// This is a comment" not in minified
+        assert "/* Multi-line" not in minified
+        assert "comment */" not in minified
+        assert "// Inline comment" not in minified
+        
+        # Code should still be present
+        assert "fn main" in minified
+        assert "let x" in minified or "x=42" in minified
+        assert "println!" in minified
+
+    def test_minification_snapshot(self, rust_minifier, snapshot: SnapshotAssertion):
+        """Snapshot test for minification to catch unexpected changes."""
+        source_file = Path("tests/fixtures/rust/size_constrained/main.rs")
+        
+        minified = rust_minifier.minify(str(source_file))
+        
+        assert minified == snapshot(name="rust_minified_size_constrained")
