@@ -311,6 +311,8 @@ class RustPreprocessor(BasePreprocessor):
     def _extract_const_values(self, content: str) -> Dict[str, str]:
         """
         Extract const and static declarations and their values.
+        
+        Protects string literals to avoid extracting fake const declarations from strings.
 
         Args:
             content: Source code content
@@ -320,28 +322,42 @@ class RustPreprocessor(BasePreprocessor):
         """
         const_map: Dict[str, str] = {}
 
-        # Match: const NAME: TYPE = VALUE;
-        # Support common types and simple literals
-        const_pattern = r'const\s+([A-Z_][A-Z0-9_]*)\s*:\s*[\w<>]+\s*=\s*([^;]+);'
+        # Protect string literals before extracting const values
+        # This prevents extracting fake const declarations from strings
+        with StringLiteralProtector(content) as protected:
+            # Work with protected content (strings replaced with placeholders)
+            protected_content = protected.working_content
+            
+            # Match: const NAME: TYPE = VALUE;
+            # Support common types and simple literals
+            const_pattern = r'const\s+([A-Z_][A-Z0-9_]*)\s*:\s*[\w<>]+\s*=\s*([^;]+);'
 
-        for match in re.finditer(const_pattern, content, re.MULTILINE):
-            name = match.group(1)
-            value = match.group(2).strip()
-            const_map[name] = value
+            for match in re.finditer(const_pattern, protected_content, re.MULTILINE):
+                name = match.group(1)
+                value = match.group(2).strip()
+                # Restore string literals in the value using replace (which restores strings)
+                for i, literal in enumerate(protected.string_literals):
+                    value = value.replace(f"__STRING_LITERAL_{i}__", literal)
+                const_map[name] = value
 
-        # Also handle static
-        static_pattern = r'static\s+([A-Z_][A-Z0-9_]*)\s*:\s*[\w<>]+\s*=\s*([^;]+);'
+            # Also handle static
+            static_pattern = r'static\s+([A-Z_][A-Z0-9_]*)\s*:\s*[\w<>]+\s*=\s*([^;]+);'
 
-        for match in re.finditer(static_pattern, content, re.MULTILINE):
-            name = match.group(1)
-            value = match.group(2).strip()
-            const_map[name] = value
+            for match in re.finditer(static_pattern, protected_content, re.MULTILINE):
+                name = match.group(1)
+                value = match.group(2).strip()
+                # Restore string literals in the value
+                for i, literal in enumerate(protected.string_literals):
+                    value = value.replace(f"__STRING_LITERAL_{i}__", literal)
+                const_map[name] = value
 
         return const_map
 
     def _inline_const_values(self, content: str, const_map: Dict[str, str]) -> str:
         """
         Replace const/static references with their literal values.
+        
+        Protects string literals during both removal and replacement.
 
         Args:
             content: Source code content
@@ -353,17 +369,33 @@ class RustPreprocessor(BasePreprocessor):
         if not const_map:
             return content
 
-        # First, remove the const/static declarations themselves
-        # We need to do this BEFORE replacement to avoid replacing in the declaration line
-        content = re.sub(r'const\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?', '', content)
-        content = re.sub(r'static\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?', '', content)
-
-        # Use StringLiteralProtector to safely replace const values
+        # Use StringLiteralProtector to safely remove const/static declarations
+        # This prevents removing declarations from inside string literals
         with StringLiteralProtector(content) as protected:
+            # Remove const/static declarations from protected content
+            protected.working_content = re.sub(
+                r'const\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?',
+                '',
+                protected.working_content
+            )
+            protected.working_content = re.sub(
+                r'static\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?',
+                '',
+                protected.working_content
+            )
+            
+            # Replace const names with their values (strings still protected)
             for name, value in const_map.items():
-                content = protected.replace(name, value)
-
-        return content
+                # Use word boundaries to avoid partial replacements
+                pattern = r'\b' + re.escape(name) + r'\b'
+                protected.working_content = re.sub(pattern, value, protected.working_content)
+            
+            # Restore string literals
+            result = protected.working_content
+            for i, literal in enumerate(protected.string_literals):
+                result = result.replace(f"__STRING_LITERAL_{i}__", literal)
+            
+            return result
 
     def get_supported_languages(self) -> List[str]:
         """Return list of supported language file extensions."""

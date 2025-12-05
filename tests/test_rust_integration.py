@@ -433,31 +433,29 @@ class TestRustEdgeCases:
     """Test edge cases and corner cases for Rust preprocessor."""
 
     def test_string_literals_not_processed(self):
-        """Test that string literals containing code patterns are mostly preserved.
+        """Test that string literals containing code patterns are fully preserved.
 
-        Note: Current limitation - const declarations are removed even from strings.
-        This is a known edge case that could be improved in future versions.
+        This test verifies the fix for const extraction and removal bugs.
+        String literals should now be completely protected from preprocessing.
         """
         preprocessor = RustPreprocessor()
         main_file = Path("tests/fixtures/rust/edge_cases/string_literals/main.rs")
 
         result = preprocessor.preprocess(str(main_file), [])
 
-        # Verify most string literals are preserved
+        # Verify string literals are fully preserved (BUG FIX)
         assert 'mod utils; but should be preserved' in result
         assert 'use utils::* in it' in result
         assert 'MAX_SIZE should not be replaced here' in result
-
-        # Known limitation: const declarations are removed from strings
-        # assert 'const MAX_SIZE: i32 = 9999; is fake' in result  # Would fail
-        assert ' is fake' in result  # What remains after const removal
+        assert 'const MAX_SIZE: i32 = 9999; is fake' in result  # Now works!
 
         # Verify actual code is processed
         assert 'pub fn helper' in result  # utils module inlined
 
-        # Known limitation: Const values from strings can interfere with extraction
-        # The fake const in the string (9999) might override the real one (1000)
-        assert '9999' in result or '1000' in result  # One of these values appears
+        # Verify correct const value is used (BUG FIX)
+        # The real MAX_SIZE = 1000 should be used, not the fake one from string
+        assert '1000' in result  # Real value
+        assert result.count('9999') == 1  # Fake value only appears in string
 
         # Verify mod declaration removed (but preserved in strings)
         assert result.count('mod utils;') >= 1  # Should appear in string literal
@@ -482,10 +480,7 @@ class TestRustEdgeCases:
         assert 'x * x' in result
 
     def test_mixed_advanced_features(self):
-        """Test combination of #[path], inline modules, and const inlining.
-
-        Note: Inline module consts are currently inlined and declarations removed.
-        """
+        """Test combination of #[path], inline modules, and const inlining."""
         preprocessor = RustPreprocessor()
         main_file = Path("tests/fixtures/rust/edge_cases/mixed_features/main.rs")
 
@@ -498,9 +493,9 @@ class TestRustEdgeCases:
         # Verify inline module structure is preserved
         assert 'mod inline_utils' in result
 
-        # Known behavior: const declarations are removed after inlining
-        # assert 'pub const MULTIPLIER' in result  # Declaration gets removed
-        assert 'pub fn scale' in result  # But function remains
+        # Const declarations are removed after inlining (expected behavior)
+        # This is intentional - we inline the values and remove declarations
+        assert 'pub fn scale' in result  # Function remains
 
         # Verify #[path] attribute is removed
         assert '#[path' not in result
