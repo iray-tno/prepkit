@@ -148,6 +148,9 @@ class RustPreprocessor(BasePreprocessor):
                 module_name: str = match.group(1)
                 custom_path: Optional[str] = None
 
+                # Calculate line number for error reporting
+                line_number = content[:match.start()].count('\n') + 1
+
                 # Check if there's a #[cfg(...)] attribute before this mod declaration
                 # If so, skip this module (it's conditionally compiled)
                 content_before_mod = content[:match.start()]
@@ -170,7 +173,7 @@ class RustPreprocessor(BasePreprocessor):
                         custom_path = last_path_match.group(1)
 
                 module_file: Optional[str] = self._resolve_module_path(
-                    module_name, current_file, include_paths, custom_path
+                    module_name, current_file, include_paths, custom_path, line_number
                 )
 
                 if module_file is None:
@@ -184,7 +187,8 @@ class RustPreprocessor(BasePreprocessor):
         return all_files
 
     def _resolve_module_path(
-        self, module_name: str, current_file: str, include_paths: List[str], custom_path: Optional[str] = None
+        self, module_name: str, current_file: str, include_paths: List[str], 
+        custom_path: Optional[str] = None, line_number: int = 0
     ) -> Optional[str]:
         """
         Resolve a module name to its file path following Rust conventions.
@@ -199,6 +203,7 @@ class RustPreprocessor(BasePreprocessor):
             current_file: Path to file containing the mod declaration
             include_paths: Additional search paths
             custom_path: Optional custom path from #[path = "..."] attribute
+            line_number: Line number of the mod declaration (for error reporting)
 
         Returns:
             Absolute path to module file, or None if not found
@@ -212,11 +217,12 @@ class RustPreprocessor(BasePreprocessor):
             if os.path.exists(custom_full_path):
                 return os.path.abspath(custom_full_path)
             else:
+                location_str = f"{current_file}:{line_number}" if line_number else current_file
                 click.echo(
                     f"❌ Error: Custom path '{custom_path}' for module '{module_name}' not found",
                     err=True
                 )
-                click.echo(f"   Referenced in: {current_file}", err=True)
+                click.echo(f"   Referenced in: {location_str}", err=True)
                 click.echo(f"   Looked for: {custom_full_path}", err=True)
                 return None
 
@@ -235,10 +241,11 @@ class RustPreprocessor(BasePreprocessor):
                 return os.path.abspath(candidate2)
 
         # Module not found
+        location_str = f"{current_file}:{line_number}" if line_number else current_file
         click.echo(
             f"❌ Error: Could not find module '{module_name}'", err=True
         )
-        click.echo(f"   Referenced in: {current_file}", err=True)
+        click.echo(f"   Referenced in: {location_str}", err=True)
         searched_paths = '\n    '.join([os.path.abspath(path) for path in search_paths])
         click.echo(f"   Searched in:\n    {searched_paths}", err=True)
         click.echo(
@@ -280,6 +287,9 @@ class RustPreprocessor(BasePreprocessor):
                 module_name: str = match.group(1)
                 custom_path: Optional[str] = None
 
+                # Calculate line number for error reporting
+                line_number = content[:match.start()].count('\n') + 1
+
                 # Check if there's a #[cfg(...)] attribute before this mod declaration
                 # If so, skip this module (it's conditionally compiled)
                 content_before_mod = content[:match.start()]
@@ -298,7 +308,7 @@ class RustPreprocessor(BasePreprocessor):
                         custom_path = last_path_match.group(1)
 
                 module_file: Optional[str] = self._resolve_module_path(
-                    module_name, file_path, include_paths, custom_path
+                    module_name, file_path, include_paths, custom_path, line_number
                 )
 
                 if module_file:
