@@ -330,3 +330,57 @@ int main() {
         assert "function_0" in output
         assert "function_49" in output  # Last function
         assert len([line for line in output.split('\n') if 'function_' in line]) >= 40
+
+
+class TestCppEdgeCases:
+    """Test edge cases and corner cases for C++ preprocessor."""
+
+    @pytest.fixture
+    def cpp_preprocessor(self):
+        return CppPreprocessor()
+
+    @pytest.fixture
+    def test_cases_dir(self):
+        """Directory containing structured test cases."""
+        return Path(__file__).parent / "cpp_test_cases"
+
+    def test_string_literals_not_processed(self, cpp_preprocessor, test_cases_dir):
+        """Test that string literals containing preprocessor directives are not processed."""
+        main_file = test_cases_dir / "edge_cases" / "string_literals" / "main.cpp"
+        include_dir = test_cases_dir / "edge_cases" / "string_literals"
+
+        output = cpp_preprocessor.preprocess(str(main_file), [str(include_dir)])
+
+        # Verify string literals are preserved
+        assert '#include <vector> but should be preserved' in output
+        assert 'const expr MAX_SIZE = 9999; is fake' in output
+        assert 'MAX_SIZE should not be replaced here in string' in output
+        assert '#include <test>' in output
+
+        # Verify actual code is processed
+        assert 'utils::helper' in output or 'helper' in output  # utils inlined
+        assert '1000' in output  # MAX_SIZE const inlined
+        assert '3.14159' in output  # PI const inlined
+
+        # Verify include is resolved
+        assert '#include "utils.hpp"' not in output
+
+    @pytest.mark.skipif(shutil.which("g++") is None, reason="g++ not available")
+    def test_string_literals_compile(self, cpp_preprocessor, test_cases_dir, tmp_path):
+        """Test that preprocessed code with string literals compiles successfully."""
+        main_file = test_cases_dir / "edge_cases" / "string_literals" / "main.cpp"
+        include_dir = test_cases_dir / "edge_cases" / "string_literals"
+
+        output = cpp_preprocessor.preprocess(str(main_file), [str(include_dir)])
+
+        # Write to temp file and compile
+        temp_cpp = tmp_path / "string_test.cpp"
+        temp_cpp.write_text(output)
+
+        result = subprocess.run(
+            ["g++", "-std=c++17", str(temp_cpp), "-o", str(tmp_path / "string_test_exe")],
+            capture_output=True, text=True, timeout=30
+        )
+
+        assert result.returncode == 0, f"Compilation failed:\n{result.stderr}"
+        assert (tmp_path / "string_test_exe").exists()
