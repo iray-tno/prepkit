@@ -13,7 +13,7 @@ A comprehensive tool to streamline competitive programming and machine learning 
   - [C++ Minifier](#c-minifier)
   - [Rust Preprocessor](#rust-preprocessor)
   - [Rust Minifier](#rust-minifier)
-  - [C++ Test Runner](#c-test-runner)
+  - [Test Runner](#test-runner)
   - [Project Management](#project-management)
   - [Configuration File](#configuration-file)
   - [Kaggle Automation](#kaggle-automation)
@@ -194,21 +194,22 @@ uv run prepkit rust minify my_solution.rs
 uv run prepkit rust minify my_solution.rs -o minified.rs
 ```
 
-### C++ Test Runner
+### Test Runner
 
-The `test` command compiles and runs C++ code with optional test input/output comparison. Perfect for competitive programming practice and validation.
+The `test` command compiles and runs C++ or Rust code with optional test input/output comparison. Perfect for competitive programming practice and validation. Language is auto-detected from file extension (.cpp, .rs).
 
 ```bash
-uv run prepkit test <file_path> [-i <input_file>] [-e <expected_file>] [--preprocess] [-I <include_path>]...
+uv run prepkit test <file_path> [-i <input_file>] [-e <expected_file>] [--preprocess] [-I <include_path>]... [--rust]
 ```
 
-*   `<file_path>`: The path to the C++ file to compile and run.
+*   `<file_path>`: The path to the source file to compile and run (C++ or Rust).
 *   `-i <input_file>` / `--input <input_file>`: Optional. Input file to feed to the program via stdin.
 *   `-e <expected_file>` / `--expected <expected_file>`: Optional. Expected output file for validation.
-*   `--preprocess`: Optional. Preprocess the file before compiling (resolves includes and constexpr).
+*   `--preprocess`: Optional. Preprocess the file before compiling (resolves includes/modules and inlines constants).
 *   `-I <include_path>` / `--include-path <include_path>`: Optional. Include paths for preprocessing (only used with `--preprocess`).
+*   `--rust`: Optional. Force Rust mode (auto-detected from `.rs` extension).
 
-**Example:**
+**C++ Examples:**
 
 ```bash
 # Basic compilation and execution
@@ -224,11 +225,51 @@ uv run prepkit test solution.cpp -i input.txt -e expected.txt
 uv run prepkit test solution.cpp --preprocess -I ./lib -i input.txt -e expected.txt
 ```
 
-The test command will:
-1. Compile your code with `g++` (configurable via `prepkit_config.yaml`)
-2. Run the executable with optional input
-3. Compare output with expected results if provided
-4. Report success or failure with clear error messages
+**Rust Examples:**
+
+```bash
+# Basic compilation and execution (auto-detects .rs extension)
+uv run prepkit test solution.rs
+
+# With test input and output verification
+uv run prepkit test solution.rs -i input.txt -e expected.txt
+
+# Preprocess multi-file project before testing
+uv run prepkit test main.rs --preprocess -I ./modules -i input.txt -e expected.txt
+
+# Force Rust mode for non-.rs file
+uv run prepkit test solution.rust --rust
+```
+
+**How it works:**
+
+1. **Auto-detects language** from file extension (.cpp, .cc, .cxx, .c++ → C++; .rs → Rust)
+2. **Compiles** your code with `g++` or `rustc` (configurable via `prepkit_config.yaml`)
+3. **Runs** the executable with optional input from file
+4. **Compares** output with expected results if provided
+5. **Reports** success or failure with clear error messages
+
+**Configuration:**
+
+You can configure compiler settings in `prepkit_config.yaml`:
+
+```yaml
+# C++ compilation settings
+cpp_compile:
+  std: "c++17"           # C++ standard
+  flags: ["-O2", "-Wall"] # Additional flags
+
+# Rust compilation settings
+rust_compile:
+  edition: "2021"        # Rust edition
+  flags: ["-C", "opt-level=2"]  # Additional flags
+
+# Test settings (applies to both)
+test:
+  timeout: 5             # Execution timeout in seconds
+  input_file: "input.txt"      # Default input file
+  expected_file: "expected.txt" # Default expected output
+```
 
 ### Project Management
 
@@ -564,12 +605,12 @@ my_lang = "my_plugin_package.my_module:MyLangMinifier"
 ### ✅ Fully Implemented
 - **C++ Preprocessor**: Include resolution, constexpr replacement (int, float, double, bool, char), comment removal
 - **C++ Minifier**: Size-optimized output while preserving compilation compatibility
-- **C++ Test Runner**: Compilation, execution, and output verification with config support
 - **Rust Preprocessor**: Module flattening, const/static inlining, custom paths, conditional compilation support
 - **Rust Minifier**: Comment removal and whitespace compression
+- **Test Runner**: Compilation, execution, and output verification for both C++ (g++) and Rust (rustc) with preprocessing support
 - **Configuration System**: Project-level defaults via `prepkit_config.yaml`
 - **Project Scaffolding**: Boilerplate generation for AtCoder, Codingame, Kaggle
-- **Comprehensive Testing**: 87 tests including CLI tests, error handling, and build verification
+- **Comprehensive Testing**: 87+ tests including CLI tests, error handling, and build verification
 
 ### ⚠️ Known Limitations
 - **Complex Constexpr (C++)**: Only supports literal values (e.g., `constexpr int X = 10`), not expressions (e.g., `constexpr int Y = X * 2`)
