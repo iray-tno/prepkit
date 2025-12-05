@@ -2,6 +2,7 @@
 import pytest
 import os
 from pathlib import Path
+from syrupy import SnapshotAssertion
 from plugins.rust_plugin import RustPreprocessor
 
 
@@ -536,3 +537,43 @@ class TestRustEdgeCases:
         # Note: Our current implementation inlines all consts globally
         # This test documents current behavior - may need improvement
         assert '999' in result or '100' in result or '200' in result
+
+
+class TestRustEdgeCasesSnapshots:
+    """Snapshot tests for edge cases - catches unexpected output changes."""
+
+    def test_string_literals_snapshot(self, snapshot: SnapshotAssertion):
+        """Snapshot test for string literals preservation."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/edge_cases/string_literals/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        assert result == snapshot(name="rust_string_literals_preprocessed")
+
+    def test_deep_nesting_snapshot(self, snapshot: SnapshotAssertion):
+        """Snapshot test for deep module nesting."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/edge_cases/deep_nesting/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        assert result == snapshot(name="rust_deep_nesting_preprocessed")
+
+    def test_mixed_features_snapshot(self, snapshot: SnapshotAssertion):
+        """Snapshot test for mixed advanced features."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/edge_cases/mixed_features/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        assert result == snapshot(name="rust_mixed_features_preprocessed")
+
+    def test_const_collisions_snapshot(self, snapshot: SnapshotAssertion):
+        """Snapshot test for const name collisions."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/edge_cases/const_collisions/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        assert result == snapshot(name="rust_const_collisions_preprocessed")

@@ -1,0 +1,91 @@
+# serializer version: 1
+# name: TestRustEdgeCasesSnapshots.test_const_collisions_snapshot[rust_const_collisions_preprocessed]
+  '''
+  pub fn get_value() -> i32 {
+      999
+  }
+  
+  pub fn get_value() -> i32 {
+      999
+  }
+  
+  fn main() {
+      println!("Main VALUE: {}", 999);
+      println!("Module A result: {}", get_value());
+      println!("Module B result: {}", get_value());
+  }
+  
+  '''
+# ---
+# name: TestRustEdgeCasesSnapshots.test_deep_nesting_snapshot[rust_deep_nesting_preprocessed]
+  '''
+  pub fn core_function(x: i32) -> i32 {
+      x * x
+  }
+  
+  fn main() {
+      let result = core_function(10);
+      println!("Deep nesting result: {}", result);
+  }
+  
+  '''
+# ---
+# name: TestRustEdgeCasesSnapshots.test_mixed_features_snapshot[rust_mixed_features_preprocessed]
+  '''
+  
+  pub fn add(a: i32, b: i32) -> i32 {
+      a + b + 5
+  }
+  
+  pub fn multiply(a: i32, b: i32) -> i32 {
+      a * b
+  }
+  
+  // Mix of custom path, const inlining, and modules
+  mod inline_utils {
+      pub 
+      pub fn scale(x: i32) -> i32 {
+          x * 10
+      }
+  }
+  
+  
+  fn main() {
+      let result1 = add(100, 50);
+      let result2 = scale(5);
+  
+      println!("Result 1: {}", result1);
+      println!("Result 2: {}", result2);
+  }
+  
+  
+  '''
+# ---
+# name: TestRustEdgeCasesSnapshots.test_string_literals_snapshot[rust_string_literals_preprocessed]
+  '''
+  pub fn helper(x: i32) -> i32 {
+      // String in module should also be preserved
+      println!("Inside helper: mod should not be removed");
+      x * 2
+  }
+  
+  fn main() {
+      // String literals should NOT be processed
+      println!("This string contains mod utils; but should be preserved");
+      println!("This has use utils::* in it");
+      println!("MAX_SIZE should not be replaced here");
+      println!("const MAX_SIZE: i32 = 9999; is fake");
+  
+      // But actual usage should work
+      let size = 1000;
+      let result = helper(size);
+  
+      println!("Result: {}", result);
+  
+      // Edge case: String with quote escaping
+      println!("She said \"mod test;\" in the string");
+      println!("Path: \"./utils.rs\"");
+  }
+  
+  '''
+# ---

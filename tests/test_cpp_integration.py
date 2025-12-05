@@ -384,3 +384,25 @@ class TestCppEdgeCases:
 
         assert result.returncode == 0, f"Compilation failed:\n{result.stderr}"
         assert (tmp_path / "string_test_exe").exists()
+
+
+class TestCppEdgeCasesSnapshots:
+    """Snapshot tests for C++ edge cases - catches unexpected output changes."""
+
+    @pytest.fixture
+    def cpp_preprocessor(self):
+        return CppPreprocessor()
+
+    @pytest.fixture
+    def test_cases_dir(self):
+        """Directory containing structured test cases."""
+        return Path(__file__).parent / "cpp_test_cases"
+
+    def test_string_literals_snapshot(self, cpp_preprocessor, test_cases_dir, snapshot: SnapshotAssertion):
+        """Snapshot test for string literals preservation."""
+        main_file = test_cases_dir / "edge_cases" / "string_literals" / "main.cpp"
+        include_dir = test_cases_dir / "edge_cases" / "string_literals"
+
+        output = cpp_preprocessor.preprocess(str(main_file), [str(include_dir)])
+
+        assert output == snapshot(name="cpp_string_literals_preprocessed")

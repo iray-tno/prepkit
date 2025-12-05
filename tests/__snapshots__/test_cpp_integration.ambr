@@ -1,4 +1,49 @@
 # serializer version: 1
+# name: TestCppEdgeCasesSnapshots.test_string_literals_snapshot[cpp_string_literals_preprocessed]
+  '''
+  #ifndef UTILS_HPP
+  #define UTILS_HPP
+  
+  #include <iostream>
+  
+  namespace utils {
+  inline int helper(int x) {
+  
+    std::cout << "Inside helper: #include should not be removed" << std::endl;
+    return x * 2;
+  }
+  }
+  
+  #endif
+  #include <iostream>
+  
+  ; // namespace utils
+  ;
+  
+  int main() {
+  
+    std::cout << "This contains #include <vector> but should be preserved"
+              << std::endl;
+    std::cout << "const expr MAX_SIZE = 9999; is fake" << std::endl;
+    std::cout << "MAX_SIZE should not be replaced here in string" << std::endl;
+  
+    int size = 1000;
+    double pi = 3.14159;
+  
+    std::cout << "Actual MAX_SIZE: " << size << std::endl;
+    std::cout << "Actual PI: " << pi << std::endl;
+  
+    std::cout << "She said \"#include <test>\" in the string" << std::endl;
+    std::cout << "Path: \"./utils.hpp\"" << std::endl;
+  
+    int result = utils::helper(size);
+    std::cout << "Result: " << result << std::endl;
+  
+    return 0;
+  }
+  
+  '''
+# ---
 # name: TestCppPreprocessorEnhanced.test_algorithm_template_snapshot[segment_tree_preprocessed]
   '''
   #pragma once
