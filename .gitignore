@@ -13,20 +13,36 @@ venv/
 .ruff_cache/
 .hypothesis/
 
+# Test coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.cover
+.hypothesis/
+
 # IDEs
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+.vim/
 
 # OS generated files
 .DS_Store
 .Trashes
 Thumbs.db
+ehthumbs.db
 
 # Build artifacts
 dist/
 build/
 *.egg
 *.whl
+*.so
+*.dylib
+*.dll
 
 # Temporary files
 *.tmp
@@ -34,14 +50,58 @@ build/
 temp_combined.cpp
 temp_minify.cpp
 temp/
+*.bak
 
-# Poetry
+# Package managers
+# uv
+.uv/
+uv.lock.backup
+
+# Poetry (legacy)
 .poetry/
-poetry.lock # Keep if you want to commit lock file, ignore if not
+poetry.lock
 
-# Test projects
+# Test artifacts
 tests/temp_projects/
+*.test
+*.out
+a.out
+*.exe
+test_output/
+*.debug
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Experiment tracking
+# WandB
+wandb/
+*.wandb
+
+# Optuna
+optuna_*.db
+optuna_*.log
+*.db-journal
+
+# Benchmark results
+.benchmarks/
+benchmark_results/
+*.benchmark
+
+# PrepKit specific
+# Preprocessed output
+*.preprocessed.cpp
+*.preprocessed.rs
+*.minified.cpp
+*.minified.rs
+submit.cpp
+submit.rs
 
 # Serena
 .serena/*
 !.serena/project.yml
+
+# Local config overrides
+prepkit_config.local.yaml
+.prepkit/local/
