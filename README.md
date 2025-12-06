@@ -755,25 +755,25 @@ my_lang = "my_plugin_package.my_module:MyLangMinifier"
 ## Current Status & Limitations
 
 ### ✅ Fully Implemented
-- **C++ Preprocessor**: Include resolution, constexpr replacement (int, float, double, bool, char), comment removal
+- **C++ Preprocessor**: Include resolution, tunable parameter injection, comment removal
 - **C++ Minifier**: Size-optimized output while preserving compilation compatibility
-- **Rust Preprocessor**: Module flattening, const/static inlining, custom paths, conditional compilation support
+- **Rust Preprocessor**: Module flattening, tunable parameter injection, custom paths, conditional compilation support
 - **Rust Minifier**: Comment removal and whitespace compression
+- **Tunable Parameters**: Marker-based hyperparameter injection for Optuna/WandB optimization workflows
 - **Test Runner**: Compilation, execution, and output verification for both C++ (g++) and Rust (rustc) with preprocessing support
 - **Configuration System**: Project-level defaults via `prepkit_config.yaml`
 - **Project Scaffolding**: Boilerplate generation for AtCoder, Codingame, Kaggle
-- **Comprehensive Testing**: 87+ tests including CLI tests, error handling, and build verification
+- **Comprehensive Testing**: 113 tests including CLI, integration, error handling, and build verification
 
 ### ⚠️ Known Limitations
-- **Complex Constexpr (C++)**: Only supports literal values (e.g., `constexpr int X = 10`), not expressions (e.g., `constexpr int Y = X * 2`)
-- **String Constexpr (C++)**: String constant replacement is supported for basic literals
+- **Constexpr/Const (C++/Rust)**: By design, we don't evaluate expressions. Use literal values with `// @tune` markers for tunable parameters, or leave complex expressions as-is for single-file compilation.
 - **Kotlin Plugin**: Placeholder implementation only
 
 ### 🔮 Future Enhancements
-- Complex constexpr expression evaluation for C++
 - Full Kotlin preprocessor implementation
-- Advanced optimization techniques
+- Advanced optimization techniques (code size, performance)
 - Integration with more competitive programming platforms
+- Additional experiment tracking integrations
 
 ## Development Guides
 
