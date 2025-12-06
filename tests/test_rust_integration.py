@@ -245,6 +245,74 @@ class TestRustConstInlining:
         # The const should be removed
         assert "const DEBUG:" not in result
 
+    def test_const_string_inlining(self, tmp_path):
+        """Test inlining of const string values with reference types."""
+        code = """
+const GREETING: &str = "Hello, World!";
+const STATIC_MSG: &'static str = "Static message";
+
+fn main() {
+    println!("{}", GREETING);
+    println!("{}", STATIC_MSG);
+}
+"""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text(code)
+
+        preprocessor = RustPreprocessor()
+        result = preprocessor.preprocess(str(main_rs), [])
+
+        # Verify string constants are inlined
+        assert '"Hello, World!"' in result
+        assert '"Static message"' in result
+
+        # Verify const declarations are removed
+        assert "const GREETING:" not in result
+        assert "const STATIC_MSG:" not in result
+
+        # Verify const names are replaced
+        assert "GREETING" not in result
+        assert "STATIC_MSG" not in result
+
+    def test_const_expressions_inlining(self, tmp_path):
+        """Test inlining of const values with simple expressions."""
+        code = """
+const MAX_SIZE: usize = 1 << 20;
+const HALF: f64 = 1.0 / 2.0;
+const NEGATIVE: i32 = -42;
+const SUM: i32 = 10 + 20;
+
+fn main() {
+    let a = MAX_SIZE;
+    let b = HALF;
+    let c = NEGATIVE;
+    let d = SUM;
+}
+"""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text(code)
+
+        preprocessor = RustPreprocessor()
+        result = preprocessor.preprocess(str(main_rs), [])
+
+        # Verify expressions are inlined
+        assert "1 << 20" in result
+        assert "1.0 / 2.0" in result
+        assert "-42" in result
+        assert "10 + 20" in result
+
+        # Verify const declarations are removed
+        assert "const MAX_SIZE:" not in result
+        assert "const HALF:" not in result
+        assert "const NEGATIVE:" not in result
+        assert "const SUM:" not in result
+
+        # Verify const names are replaced
+        assert result.count("MAX_SIZE") == 0  # Should be replaced
+        assert result.count("HALF") == 0
+        assert result.count("NEGATIVE") == 0
+        assert result.count("SUM") == 0
+
     def test_const_in_expressions(self, tmp_path):
         """Test that consts are inlined in expressions."""
         code = """

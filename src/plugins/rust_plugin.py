@@ -339,8 +339,8 @@ class RustPreprocessor(BasePreprocessor):
             protected_content = protected.working_content
             
             # Match: const NAME: TYPE = VALUE;
-            # Support common types and simple literals
-            const_pattern = r'const\s+([A-Z_][A-Z0-9_]*)\s*:\s*[\w<>]+\s*=\s*([^;]+);'
+            # Type pattern: match anything up to the = sign (handles &str, &'static str, *const T, etc.)
+            const_pattern = r'const\s+([A-Z_][A-Z0-9_]*)\s*:\s*[^=]+\s*=\s*([^;]+);'
 
             for match in re.finditer(const_pattern, protected_content, re.MULTILINE):
                 name = match.group(1)
@@ -351,7 +351,8 @@ class RustPreprocessor(BasePreprocessor):
                 const_map[name] = value
 
             # Also handle static
-            static_pattern = r'static\s+([A-Z_][A-Z0-9_]*)\s*:\s*[\w<>]+\s*=\s*([^;]+);'
+            # Same flexible type pattern
+            static_pattern = r'static\s+([A-Z_][A-Z0-9_]*)\s*:\s*[^=]+\s*=\s*([^;]+);'
 
             for match in re.finditer(static_pattern, protected_content, re.MULTILINE):
                 name = match.group(1)
@@ -383,13 +384,14 @@ class RustPreprocessor(BasePreprocessor):
         # This prevents removing declarations from inside string literals
         with StringLiteralProtector(content) as protected:
             # Remove const/static declarations from protected content
+            # Type pattern: match anything up to the = sign (handles &str, &'static str, *const T, etc.)
             protected.working_content = re.sub(
-                r'const\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?',
+                r'const\s+[A-Z_][A-Z0-9_]*\s*:\s*[^=]+\s*=\s*[^;]+;\n?',
                 '',
                 protected.working_content
             )
             protected.working_content = re.sub(
-                r'static\s+[A-Z_][A-Z0-9_]*\s*:\s*[\w<>]+\s*=\s*[^;]+;\n?',
+                r'static\s+[A-Z_][A-Z0-9_]*\s*:\s*[^=]+\s*=\s*[^;]+;\n?',
                 '',
                 protected.working_content
             )
