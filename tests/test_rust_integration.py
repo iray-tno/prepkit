@@ -497,6 +497,145 @@ class TestRustEdgeCasesSnapshots:
 
         assert result == snapshot(name="rust_const_collisions_preprocessed")
 
+class TestRustTunableParameters:
+    """Tests for Rust tunable parameter injection."""
+
+    @pytest.fixture
+    def rust_preprocessor(self):
+        return RustPreprocessor()
+
+    def test_single_tunable_param(self, rust_preprocessor, tmp_path):
+        """Test single tunable parameter injection."""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text("""
+const VALUE: i32 = 100;  // @tune
+
+fn main() {
+    println!("{}", VALUE);
+}
+""")
+
+        # Without defines - should keep original value
+        output = rust_preprocessor.preprocess(str(main_rs), [])
+        assert "100" in output
+
+        # With defines - should inject new value
+        output = rust_preprocessor.preprocess(str(main_rs), [], defines={"VALUE": "200"})
+        assert "200" in output
+        assert "100" not in output
+
+    def test_multiple_tunable_params(self, rust_preprocessor, tmp_path):
+        """Test multiple tunable parameters with selective injection."""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text("""
+const TEMP_START: f64 = 1000.0;  // @tune
+const BEAM_WIDTH: i32 = 50;  // @tune
+const MAX_TURNS: i32 = 100;  // Fixed parameter
+
+fn main() {
+    println!("{} {} {}", TEMP_START, BEAM_WIDTH, MAX_TURNS);
+}
+""")
+
+        # Without defines - should keep original values
+        output = rust_preprocessor.preprocess(str(main_rs), [])
+        assert "1000.0" in output
+        assert "50" in output
+        assert "100" in output
+
+        # With selective defines - only marked params replaced
+        output = rust_preprocessor.preprocess(str(main_rs), [],
+            defines={"TEMP_START": "1500.0", "BEAM_WIDTH": "75"})
+        assert "1500.0" in output
+        assert "75" in output
+        assert "100" in output  # Fixed parameter unchanged
+
+    def test_tunable_params_types(self, rust_preprocessor, tmp_path):
+        """Test tunable parameter injection with different types."""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text("""
+const PI: f64 = 3.14;  // @tune
+const COUNT: i32 = 10;  // @tune
+const DEBUG: bool = true;  // @tune
+
+fn main() {
+    println!("{} {} {}", PI, COUNT, DEBUG);
+}
+""")
+
+        # Inject different types
+        output = rust_preprocessor.preprocess(str(main_rs), [],
+            defines={"PI": "3.14159", "COUNT": "20", "DEBUG": "false"})
+        assert "3.14159" in output
+        assert "20" in output
+        assert "false" in output
+
+    def test_tunable_params_preserves_unmarked(self, rust_preprocessor, tmp_path):
+        """Test that unmarked const declarations are not affected."""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text("""
+const TEMP_START: f64 = 1000.0;  // @tune
+const MAX_TURNS: i32 = 100;  // Not marked
+
+fn main() {
+    println!("{} {}", TEMP_START, MAX_TURNS);
+}
+""")
+
+        # Try to define unmarked param - should have no effect
+        output = rust_preprocessor.preprocess(str(main_rs), [],
+            defines={"MAX_TURNS": "9999"})
+        # MAX_TURNS is not marked with @tune, so should remain 100
+        assert "100" in output
+        assert "9999" not in output
+
+    def test_tunable_params_marker_preserved(self, rust_preprocessor, tmp_path):
+        """Test that @tune markers remain after injection (Rust keeps comments during preprocessing)."""
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text("""
+const VALUE: i32 = 100;  // @tune
+
+fn main() {
+    println!("{}", VALUE);
+}
+""")
+
+        output = rust_preprocessor.preprocess(str(main_rs), [], defines={"VALUE": "200"})
+        # Rust preprocessor keeps comments (unlike C++), so markers remain
+        # They're removed during minification, not preprocessing
+        assert "200" in output  # Value changed
+        assert "@tune" in output  # Marker still present
+
+    def test_tunable_params_with_modules(self, rust_preprocessor, tmp_path):
+        """Test tunable parameters work with module resolution."""
+        # Create utils.rs with tunable param
+        utils_rs = tmp_path / "utils.rs"
+        utils_rs.write_text("""
+const MULTIPLIER: i32 = 10;  // @tune
+
+pub fn scale(x: i32) -> i32 {
+    x * MULTIPLIER
+}
+""")
+
+        # Create main.rs
+        main_rs = tmp_path / "main.rs"
+        main_rs.write_text("""
+mod utils;
+
+fn main() {
+    let result = utils::scale(5);
+    println!("{}", result);
+}
+""")
+
+        # Inject tunable param from module
+        output = rust_preprocessor.preprocess(str(main_rs), [],
+            defines={"MULTIPLIER": "20"})
+        assert "20" in output
+        assert "10" not in output
+
+
 class TestRustMinifier:
     """Tests for Rust code minification."""
 

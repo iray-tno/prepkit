@@ -71,11 +71,12 @@ All commands are executed via `uv run prepkit <command>`.
 The `cpp preprocess` command integrates multiple C++ files into a single file, replaces `constexpr` variables with their values, removes comments, and formats the code.
 
 ```bash
-uv run prepkit cpp preprocess <file_path> [-I <include_path>]... [-o <output_file>]
+uv run prepkit cpp preprocess <file_path> [-I <include_path>]... [-D <NAME=VALUE>]... [-o <output_file>]
 ```
 
 *   `<file_path>`: The path to the main C++ file to preprocess.
 *   `-I <include_path>` / `--include-path <include_path>`: Optional. Specifies additional directories to search for included files. Can be used multiple times.
+*   `-D <NAME=VALUE>` / `--define <NAME=VALUE>`: Optional. Injects tunable parameter values (see Tunable Parameters section below). Can be used multiple times.
 *   `-o <output_file>` / `--output <output_file>`: Optional. Writes output to a file instead of stdout.
 
 **Example:**
@@ -86,7 +87,87 @@ uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers
 
 # Write to file
 uv run prepkit cpp preprocess my_project/main.cpp -I my_project/headers -o preprocessed.cpp
+
+# With tunable parameter injection
+uv run prepkit cpp preprocess solution.cpp -D TEMP_START=1500.0 -D BEAM_WIDTH=100
 ```
+
+#### Tunable Parameters for Hyperparameter Optimization
+
+PrepKit supports **tunable parameter injection** for competitive programming and machine learning workflows. This feature is designed for **Optuna optimization** and **WandB experiment tracking** in heuristic/marathon contests.
+
+**How it works:**
+
+1. Mark parameters you want to tune with `// @tune` comments in your source code
+2. Inject different values via CLI flags (`-D`), config file, or Python API
+3. Source code remains valid with default values before injection
+
+**Example (C++):**
+
+```cpp
+// source.cpp
+constexpr double TEMP_START = 1000.0;  // @tune
+constexpr int BEAM_WIDTH = 50;         // @tune
+constexpr int MAX_TURNS = 100;         // Fixed parameter (not marked)
+
+int main() {
+    // Your algorithm using these parameters
+    return 0;
+}
+```
+
+**Inject via CLI:**
+
+```bash
+# Test different parameter values
+uv run prepkit cpp preprocess source.cpp -D TEMP_START=1500.0 -D BEAM_WIDTH=75
+
+# Only marked parameters are replaced; MAX_TURNS stays 100
+```
+
+**Inject via Python API (for Optuna):**
+
+```python
+from plugins.cpp_plugin import CppPreprocessor
+
+preprocessor = CppPreprocessor()
+
+# In Optuna objective function
+def objective(trial):
+    temp_start = trial.suggest_float("TEMP_START", 800.0, 2000.0)
+    beam_width = trial.suggest_int("BEAM_WIDTH", 20, 100)
+
+    # Inject trial parameters
+    code = preprocessor.preprocess(
+        "solution.cpp", [],
+        defines={
+            "TEMP_START": str(temp_start),
+            "BEAM_WIDTH": str(beam_width)
+        }
+    )
+
+    # Compile and run with injected parameters
+    # ... evaluate score ...
+    return score
+```
+
+**Inject via Config File:**
+
+```yaml
+# prepkit_config.yaml
+cpp_preprocess:
+  defines:
+    TEMP_START: "1500.0"
+    BEAM_WIDTH: "75"
+```
+
+**Key Features:**
+
+- Only parameters marked with `// @tune` are replaceable
+- Source code with default values remains valid and compilable
+- Supports all `constexpr` types: `int`, `float`, `double`, `bool`
+- Works seamlessly with Optuna trials and WandB experiments
+- Config values can be overridden by CLI flags
 
 ### C++ Minifier
 
@@ -114,11 +195,12 @@ uv run prepkit cpp minify my_solution.cpp -o minified.cpp
 The `rust preprocess` command flattens multi-file Rust projects into a single file by inlining modules, replacing const/static values, and removing module qualifiers. Perfect for competitive programming platforms that require single-file submissions.
 
 ```bash
-uv run prepkit rust preprocess <file_path> [-I <include_path>]... [-o <output_file>]
+uv run prepkit rust preprocess <file_path> [-I <include_path>]... [-D <NAME=VALUE>]... [-o <output_file>]
 ```
 
 *   `<file_path>`: The path to the main Rust file (main.rs or lib.rs) to preprocess.
 *   `-I <include_path>` / `--include-path <include_path>`: Optional. Specifies additional directories to search for modules. Can be used multiple times.
+*   `-D <NAME=VALUE>` / `--define <NAME=VALUE>`: Optional. Injects tunable parameter values (see Tunable Parameters for Rust section below). Can be used multiple times.
 *   `-o <output_file>` / `--output <output_file>`: Optional. Writes output to a file instead of stdout.
 
 **Features:**
@@ -172,6 +254,76 @@ fn main() {
     println!("Result: {}", result);
 }
 ```
+
+#### Tunable Parameters for Rust
+
+Like the C++ preprocessor, the Rust preprocessor supports **tunable parameter injection** for hyperparameter optimization.
+
+**Example (Rust):**
+
+```rust
+// solution.rs
+const TEMP_START: f64 = 1000.0;  // @tune
+const BEAM_WIDTH: i32 = 50;      // @tune
+const MAX_TURNS: i32 = 100;      // Fixed parameter (not marked)
+
+fn main() {
+    // Your algorithm using these parameters
+}
+```
+
+**Inject via CLI:**
+
+```bash
+# Test different parameter values
+uv run prepkit rust preprocess solution.rs -D TEMP_START=1500.0 -D BEAM_WIDTH=75
+
+# Only marked parameters are replaced; MAX_TURNS stays 100
+```
+
+**Inject via Python API (for Optuna):**
+
+```python
+from plugins.rust_plugin import RustPreprocessor
+
+preprocessor = RustPreprocessor()
+
+# In Optuna objective function
+def objective(trial):
+    temp_start = trial.suggest_float("TEMP_START", 800.0, 2000.0)
+    beam_width = trial.suggest_int("BEAM_WIDTH", 20, 100)
+
+    # Inject trial parameters
+    code = preprocessor.preprocess(
+        "solution.rs", [],
+        defines={
+            "TEMP_START": str(temp_start),
+            "BEAM_WIDTH": str(beam_width)
+        }
+    )
+
+    # Compile and run with injected parameters
+    # ... evaluate score ...
+    return score
+```
+
+**Inject via Config File:**
+
+```yaml
+# prepkit_config.yaml
+rust_preprocess:
+  defines:
+    TEMP_START: "1500.0"
+    BEAM_WIDTH: "75"
+```
+
+**Key Features:**
+
+- Same marker-based system as C++ (`// @tune`)
+- Only marked parameters are replaced
+- Source code remains valid Rust with default values
+- Supports all `const` types: `i32`, `f64`, `bool`, etc.
+- Works with module flattening (parameters from any module can be tuned)
 
 ### Rust Minifier
 
