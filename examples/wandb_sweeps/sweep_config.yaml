@@ -1,0 +1,50 @@
+# WandB Sweep Configuration for PrepKit Parameter Tuning
+# This configuration defines a hyperparameter search for competitive programming solutions
+
+program: train.py
+method: bayes  # Options: random, grid, bayes
+metric:
+  name: score
+  goal: minimize
+
+parameters:
+  # Beam search parameters
+  BEAM_WIDTH:
+    min: 10
+    max: 200
+
+  SEARCH_DEPTH:
+    min: 10
+    max: 50
+
+  RANDOMNESS:
+    min: 0.0
+    max: 0.3
+
+  GREEDY_WEIGHT:
+    min: 0.3
+    max: 1.0
+
+  # Simulated annealing parameters (if applicable)
+  TEMP_START:
+    distribution: log_uniform_values
+    min: 500
+    max: 2000
+
+  TEMP_END:
+    min: 1.0
+    max: 50.0
+
+  COOLING_RATE:
+    min: 0.95
+    max: 0.999
+
+# Early stopping
+early_terminate:
+  type: hyperband
+  min_iter: 10
+  eta: 2
+  s: 3
+
+# Run configuration
+run_cap: 100  # Maximum number of runs
