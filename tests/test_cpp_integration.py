@@ -38,10 +38,7 @@ class TestCppPreprocessorEnhanced:
         assert "#include <vector>" in output
         assert "#include \"segment_tree.hpp\"" not in output
         assert "class SegmentTree" in output
-        assert "100000" in output  # MAXN replacement
-        assert "1000000007" in output  # MOD replacement
-        assert "constexpr" not in output
-        
+
         # Snapshot test
         assert output == snapshot(name="segment_tree_preprocessed")
 
@@ -62,24 +59,6 @@ class TestCppPreprocessorEnhanced:
         
         # Snapshot test
         assert output == snapshot(name="nested_includes_preprocessed")
-
-    def test_complex_constexpr_snapshot(self, cpp_preprocessor, test_cases_dir, snapshot: SnapshotAssertion):
-        """Test complex constexpr scenarios with snapshot comparison."""
-        main_file = test_cases_dir / "constexpr_scenarios" / "complex_constants" / "main.cpp"
-        include_dir = test_cases_dir / "constexpr_scenarios" / "complex_constants"
-        
-        output = cpp_preprocessor.preprocess(str(main_file), [str(include_dir)])
-        
-        # Verify constexpr replacements (currently only integer literals are supported)
-        assert "constexpr" not in output
-        assert "1000000007" in output  # MOD - integer literal
-        # Note: Current implementation only handles integer literals
-        # Complex expressions like 1e18, boolean true, and double PI are not yet supported
-        assert "200005" in output  # MAXN - integer literal
-        # TODO: Add support for non-integer constexpr (PI, DEBUG, INF)
-        
-        # Snapshot test
-        assert output == snapshot(name="complex_constexpr_preprocessed")
 
     def test_competitive_solution_snapshot(self, cpp_preprocessor, test_cases_dir, snapshot: SnapshotAssertion):
         """Test realistic competitive programming solution with snapshot comparison."""
@@ -102,13 +81,7 @@ class TestCppPreprocessorEnhanced:
         assert "add_mod(" in output
         assert "multiply_mod(" in output
         assert "power_mod(" in output
-        
-        # Verify constexpr replacements (currently only integer literals are supported)
-        assert "998244353" in output  # MOD - integer literal
-        # Note: MAXN may not be replaced if it's not a simple integer literal
-        # TODO: Improve constexpr replacement to handle all constant types
-        assert "constexpr" not in output
-        
+
         # Snapshot test
         assert output == snapshot(name="atcoder_solution_preprocessed")
 
@@ -211,43 +184,6 @@ class TestCppPreprocessorEnhanced:
         assert "//" not in minified
         assert "/*" not in minified
         assert "*/" not in minified
-
-    @given(value=st.integers(min_value=1, max_value=2**31-1))
-    def test_constexpr_replacement_property(self, value):
-        """Property-based test for constexpr integer replacement."""
-        assume(value > 0)  # Ensure positive values
-        
-        # Create preprocessor instance inside test for Hypothesis compatibility
-        cpp_preprocessor = CppPreprocessor()
-        
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Create test file with constexpr
-            code = f"""
-            constexpr int TEST_VALUE = {value};
-            int main() {{
-                int x = TEST_VALUE;
-                return x > 0 ? 0 : 1;
-            }}
-            """
-            
-            test_file = Path(tmp_dir) / "constexpr_test.cpp"
-            test_file.write_text(code.strip())
-            
-            # Preprocess
-            output = cpp_preprocessor.preprocess(str(test_file), [tmp_dir])
-            
-            # Should replace constexpr with actual value
-            assert f"int x = {value};" in output or f"x={value}" in output
-            assert "constexpr" not in output
-            assert "TEST_VALUE" not in output or str(value) in output
-
-    @pytest.mark.skip(reason="String constexpr replacement not yet implemented - only integer literals supported")
-    @given(string_value=st.text(alphabet=st.characters(whitelist_categories=("Lu", "Ll")), min_size=1, max_size=20))
-    def test_string_constexpr_replacement_property(self, string_value):
-        """Property-based test for constexpr string replacement."""
-        # TODO: Implement string constexpr replacement in C++ preprocessor
-        # Currently only integer literal constexpr replacement is supported
-        pass
 
     def test_error_handling_missing_include(self, cpp_preprocessor, tmp_path):
         """Test error handling for missing include files."""

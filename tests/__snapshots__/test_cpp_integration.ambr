@@ -12,13 +12,13 @@
     std::cout << "Inside helper: #include should not be removed" << std::endl;
     return x * 2;
   }
-  }
+  } // namespace utils
   
   #endif
   #include <iostream>
   
-  ; // namespace utils
-  ;
+  constexpr int MAX_SIZE = 1000;
+  constexpr double PI = 3.14159;
   
   int main() {
   
@@ -27,8 +27,8 @@
     std::cout << "const expr MAX_SIZE = 9999; is fake" << std::endl;
     std::cout << "MAX_SIZE should not be replaced here in string" << std::endl;
   
-    int size = 1000;
-    double pi = 3.14159;
+    int size = MAX_SIZE;
+    double pi = PI;
   
     std::cout << "Actual MAX_SIZE: " << size << std::endl;
     std::cout << "Actual PI: " << pi << std::endl;
@@ -90,8 +90,8 @@
   #include <iostream>
   #include <vector>
   
-  ;
-  ;
+  constexpr int MAXN = 100000;
+  constexpr int MOD = 1000000007;
   
   int main() {
     int n;
@@ -111,7 +111,7 @@
     while (q--) {
       int l, r;
       std::cin >> l >> r;
-      std::cout << st.query(l, r) % 1000000007 << std::endl;
+      std::cout << st.query(l, r) % MOD << std::endl;
     }
   
     return 0;
@@ -181,8 +181,8 @@
   #include <string>
   #include <vector>
   
-  ;
-  ;
+  constexpr int MOD = 998244353;
+  constexpr int MAXN = 300005;
   
   int main() {
     fast_io();
@@ -196,43 +196,13 @@
   
     long long answer = 0;
     for (int i = 0; i < n; i++) {
-      answer = add_mod(answer,
-                       multiply_mod(a[i], power_mod(2, i, 998244353), 998244353),
-                       998244353);
+      answer =
+          add_mod(answer, multiply_mod(a[i], power_mod(2, i, MOD), MOD), MOD);
     }
   
     std::cout << answer << std::endl;
   
     return 0;
-  }
-  '''
-# ---
-# name: TestCppPreprocessorEnhanced.test_complex_constexpr_snapshot[complex_constexpr_preprocessed]
-  '''
-  #include <iostream>
-  #include <vector>
-  
-  ;
-  ;
-  ;
-  ;
-  ;
-  
-  int main() {
-    std::vector<int> arr(200005);
-  
-    long long result = 0;
-    for (int i = 0; i < 1000; i++) {
-      result = (result + i) % 1000000007;
-    }
-  
-    if (true) {
-      std::cout << "Result: " << result << std::endl;
-      std::cout << "PI approximation: " << 3.14159265359 << std::endl;
-      std::cout << "Max value: " << 1e18 << std::endl;
-    }
-  
-    return result == 0 ? 0 : 1;
   }
   '''
 # ---

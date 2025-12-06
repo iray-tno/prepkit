@@ -1,16 +1,22 @@
 # serializer version: 1
 # name: TestRustEdgeCasesSnapshots.test_const_collisions_snapshot[rust_const_collisions_preprocessed]
   '''
-  pub fn get_value() -> i32 {
-      999
-  }
+  const VALUE: i32 = 100;
   
   pub fn get_value() -> i32 {
-      999
+      VALUE
   }
+  
+  const VALUE: i32 = 200;
+  
+  pub fn get_value() -> i32 {
+      VALUE
+  }
+  
+  const VALUE: i32 = 999;
   
   fn main() {
-      println!("Main VALUE: {}", 999);
+      println!("Main VALUE: {}", VALUE);
       println!("Module A result: {}", get_value());
       println!("Module B result: {}", get_value());
   }
@@ -32,9 +38,10 @@
 # ---
 # name: TestRustEdgeCasesSnapshots.test_mixed_features_snapshot[rust_mixed_features_preprocessed]
   '''
+  const OFFSET: i32 = 5;
   
   pub fn add(a: i32, b: i32) -> i32 {
-      a + b + 5
+      a + b + OFFSET
   }
   
   pub fn multiply(a: i32, b: i32) -> i32 {
@@ -43,21 +50,22 @@
   
   // Mix of custom path, const inlining, and modules
   mod inline_utils {
-      pub 
+      pub const MULTIPLIER: i32 = 10;
+  
       pub fn scale(x: i32) -> i32 {
-          x * 10
+          x * MULTIPLIER
       }
   }
   
+  const BASE_VALUE: i32 = 100;
   
   fn main() {
-      let result1 = add(100, 50);
+      let result1 = add(BASE_VALUE, 50);
       let result2 = scale(5);
   
       println!("Result 1: {}", result1);
       println!("Result 2: {}", result2);
   }
-  
   
   '''
 # ---
@@ -69,6 +77,8 @@
       x * 2
   }
   
+  const MAX_SIZE: i32 = 1000;
+  
   fn main() {
       // String literals should NOT be processed
       println!("This string contains mod utils; but should be preserved");
@@ -77,7 +87,7 @@
       println!("const MAX_SIZE: i32 = 9999; is fake");
   
       // But actual usage should work
-      let size = 1000;
+      let size = MAX_SIZE;
       let result = helper(size);
   
       println!("Result: {}", result);
