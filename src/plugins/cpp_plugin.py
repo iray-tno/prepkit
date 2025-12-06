@@ -9,8 +9,22 @@ from base_interfaces import BasePreprocessor, BaseMinifier
 from preprocessing_utils import topological_sort_files, report_circular_dependency_error
 
 class CppPreprocessor(BasePreprocessor):
-    def preprocess(self, file_path: str, include_paths: List[str]) -> str:
+    def preprocess(self, file_path: str, include_paths: List[str], defines: Dict[str, str] = None) -> str:
+        """
+        Preprocess C++ file by flattening includes and optionally injecting tunable parameters.
+
+        Args:
+            file_path: Path to the main C++ file
+            include_paths: Additional include search paths
+            defines: Optional dict of parameter names to values for injection.
+                     Only replaces parameters marked with // @tune comment.
+
+        Returns:
+            Preprocessed C++ code as a single string
+        """
         click.echo(f"Preprocessing {file_path}")
+        if defines:
+            click.echo(f"Injecting {len(defines)} tunable parameter(s): {list(defines.keys())}")
         
         all_include_paths: List[str] = list(include_paths)
         file_dir: str = os.path.dirname(file_path)
@@ -54,6 +68,10 @@ class CppPreprocessor(BasePreprocessor):
 
             with open(temp_file_path, "r") as f:
                 processed_content: str = f.read()
+
+            # Inject tunable parameters (before removing comments, as we need // @tune markers)
+            if defines:
+                processed_content = self._inject_tunable_params(processed_content, defines)
 
             # Remove comments using regex
             processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
@@ -101,6 +119,36 @@ class CppPreprocessor(BasePreprocessor):
             # Report circular dependency error
             report_circular_dependency_error(cycle_files, language="C++")
             return ""
+
+    def _inject_tunable_params(self, content: str, defines: Dict[str, str]) -> str:
+        """
+        Replace values of tunable parameters marked with // @tune.
+
+        Args:
+            content: Source code content
+            defines: Dictionary of parameter names to replacement values
+
+        Returns:
+            Content with tunable parameter values replaced
+        """
+        # Pattern to match: constexpr TYPE NAME = VALUE; // @tune
+        # Captures: TYPE, NAME, VALUE
+        pattern = r'(constexpr\s+\w+(?:\s*<[^>]+>)?\s+)(\w+)(\s*=\s*)([^;]+)(;\s*//\s*@tune)'
+
+        def replace_value(match):
+            prefix = match.group(1)  # constexpr TYPE
+            name = match.group(2)     # NAME
+            equals = match.group(3)   # =
+            old_value = match.group(4).strip()  # VALUE
+            suffix = match.group(5)   # ; // @tune
+
+            if name in defines:
+                new_value = defines[name]
+                click.echo(f"  {name}: {old_value} -> {new_value}")
+                return f"{prefix}{name}{equals}{new_value}{suffix}"
+            return match.group(0)  # No replacement
+
+        return re.sub(pattern, replace_value, content)
 
     def get_supported_languages(self) -> List[str]:
         return ["cpp", "cxx", "c"]

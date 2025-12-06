@@ -11,18 +11,22 @@ from preprocessing_utils import topological_sort_files, StringLiteralProtector, 
 class RustPreprocessor(BasePreprocessor):
     """Rust preprocessor for flattening multi-file projects into single submission files."""
 
-    def preprocess(self, file_path: str, include_paths: List[str]) -> str:
+    def preprocess(self, file_path: str, include_paths: List[str], defines: Dict[str, str] = None) -> str:
         """
         Preprocess a Rust project by flattening modules into a single file.
 
         Args:
             file_path: Path to the entry file (main.rs or lib.rs)
             include_paths: Additional paths to search for modules
+            defines: Optional dict of parameter names to values for injection.
+                     Only replaces parameters marked with // @tune comment.
 
         Returns:
             Flattened Rust code as a single string
         """
         click.echo(f"Preprocessing {file_path}")
+        if defines:
+            click.echo(f"Injecting {len(defines)} tunable parameter(s): {list(defines.keys())}")
 
         # Setup include paths
         all_include_paths: List[str] = list(include_paths)
@@ -101,6 +105,10 @@ class RustPreprocessor(BasePreprocessor):
             except (FileNotFoundError, subprocess.SubprocessError):
                 # rustfmt not available, use unformatted output
                 pass
+
+            # Inject tunable parameters
+            if defines:
+                combined_content = self._inject_tunable_params(combined_content, defines)
 
             return combined_content
         else:
@@ -313,6 +321,36 @@ class RustPreprocessor(BasePreprocessor):
                     in_degree[os.path.abspath(file_path)] += 1
 
         return graph, in_degree
+
+    def _inject_tunable_params(self, content: str, defines: Dict[str, str]) -> str:
+        """
+        Replace values of tunable parameters marked with // @tune.
+
+        Args:
+            content: Source code content
+            defines: Dictionary of parameter names to replacement values
+
+        Returns:
+            Content with tunable parameter values replaced
+        """
+        # Pattern to match: const NAME: TYPE = VALUE; // @tune
+        # Captures: NAME, TYPE, VALUE
+        pattern = r'(const\s+)(\w+)(\s*:\s*[^=]+\s*=\s*)([^;]+)(;\s*//\s*@tune)'
+
+        def replace_value(match):
+            prefix = match.group(1)  # const
+            name = match.group(2)     # NAME
+            type_and_eq = match.group(3)  # : TYPE =
+            old_value = match.group(4).strip()  # VALUE
+            suffix = match.group(5)   # ; // @tune
+
+            if name in defines:
+                new_value = defines[name]
+                click.echo(f"  {name}: {old_value} -> {new_value}")
+                return f"{prefix}{name}{type_and_eq}{new_value}{suffix}"
+            return match.group(0)  # No replacement
+
+        return re.sub(pattern, replace_value, content)
 
     def get_supported_languages(self) -> List[str]:
         """Return list of supported language file extensions."""
