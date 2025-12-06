@@ -1,5 +1,8 @@
 # PrepKit
 
+[![Tests](https://github.com/iray-tno/prepkit/actions/workflows/test.yml/badge.svg)](https://github.com/iray-tno/prepkit/actions/workflows/test.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
 English | [日本語](README.ja.md)
 
 A comprehensive tool to streamline competitive programming and machine learning workflows, written in Python. PrepKit automates code management, experiment tracking, and submission processes for platforms like Atcoder, Codingame, and Kaggle.

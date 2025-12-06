@@ -1,5 +1,8 @@
 # PrepKit
 
+[![Tests](https://github.com/iray-tno/prepkit/actions/workflows/test.yml/badge.svg)](https://github.com/iray-tno/prepkit/actions/workflows/test.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
 [English](README.md) | 日本語
 
 競技プログラミングと機械学習のワークフローを効率化するPython製の総合ツール。AtCoder、Codingame、Kaggleなどのプラットフォーム向けに、コード管理、実験追跡、自動提出を支援します。
