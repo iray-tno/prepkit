@@ -174,6 +174,57 @@ class TestRustPreprocessorNameCollisions:
         )
 
 
+class TestRustQualifierPreservation:
+    """Path qualifiers must be preserved, not stripped.
+
+    Regression coverage for the issue where a token-level "strip module
+    qualifiers" regex removed valid path segments: std sub-modules
+    (`std::collections::HashMap` -> `std::HashMap`), associated functions
+    (`HashMap::new()` -> `new()`), and crate-internal multi-segment paths.
+    Wrapping modules makes all original paths valid, so nothing is rewritten.
+    """
+
+    def test_std_and_associated_paths_preserved(self):
+        """std sub-module paths and `Type::method` calls keep all segments."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/qualified_paths/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        # std sub-module paths keep their middle segment
+        assert "std::collections::HashMap" in result
+        assert "std::cmp::Reverse" in result
+        assert "std::HashMap" not in result
+        assert "std::Reverse" not in result
+
+        # Associated functions keep their type qualifier
+        assert "HashMap::new()" in result
+        assert "Vec::new()" in result
+
+        # Crate-internal multi-segment path is preserved end to end
+        assert "helpers::scale::by_two" in result
+
+    @pytest.mark.skipif(shutil.which("rustc") is None, reason="rustc not available")
+    def test_qualified_paths_compile(self, tmp_path):
+        """Output with std/associated/internal paths must compile."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/qualified_paths/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        output_rs = tmp_path / "output.rs"
+        output_rs.write_text(result)
+
+        compile_result = subprocess.run(
+            ["rustc", "--edition", "2021", "--crate-type", "bin",
+             str(output_rs), "-o", str(tmp_path / "bin")],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert compile_result.returncode == 0, (
+            f"Output with qualified paths should compile:\n{compile_result.stderr}"
+        )
+
+
 class TestRustPreprocessorCircularDependency:
     """Test circular dependency detection."""
 
