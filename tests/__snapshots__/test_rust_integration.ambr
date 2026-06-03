@@ -1,36 +1,45 @@
 # serializer version: 1
 # name: TestRustEdgeCasesSnapshots.test_const_collisions_snapshot[rust_const_collisions_preprocessed]
   '''
-  const VALUE: i32 = 100;
+  mod module_a {
+      const VALUE: i32 = 100;
   
-  pub fn get_value() -> i32 {
-      VALUE
+      pub fn get_value() -> i32 {
+          VALUE
+      }
   }
+  mod module_b {
+      const VALUE: i32 = 200;
   
-  const VALUE: i32 = 200;
-  
-  pub fn get_value() -> i32 {
-      VALUE
+      pub fn get_value() -> i32 {
+          VALUE
+      }
   }
   
   const VALUE: i32 = 999;
   
   fn main() {
       println!("Main VALUE: {}", VALUE);
-      println!("Module A result: {}", get_value());
-      println!("Module B result: {}", get_value());
+      println!("Module A result: {}", module_a::get_value());
+      println!("Module B result: {}", module_b::get_value());
   }
   
   '''
 # ---
 # name: TestRustEdgeCasesSnapshots.test_deep_nesting_snapshot[rust_deep_nesting_preprocessed]
   '''
-  pub fn core_function(x: i32) -> i32 {
-      x * x
+  mod level1 {
+      pub mod level2 {
+          pub mod level3 {
+              pub fn core_function(x: i32) -> i32 {
+                  x * x
+              }
+          }
+      }
   }
   
   fn main() {
-      let result = core_function(10);
+      let result = level1::level2::level3::core_function(10);
       println!("Deep nesting result: {}", result);
   }
   
@@ -38,17 +47,20 @@
 # ---
 # name: TestRustEdgeCasesSnapshots.test_mixed_features_snapshot[rust_mixed_features_preprocessed]
   '''
-  const OFFSET: i32 = 5;
-  
-  pub fn add(a: i32, b: i32) -> i32 {
-      a + b + OFFSET
-  }
-  
-  pub fn multiply(a: i32, b: i32) -> i32 {
-      a * b
-  }
-  
   // Mix of custom path, const inlining, and modules
+  
+  mod math {
+      const OFFSET: i32 = 5;
+  
+      pub fn add(a: i32, b: i32) -> i32 {
+          a + b + OFFSET
+      }
+  
+      pub fn multiply(a: i32, b: i32) -> i32 {
+          a * b
+      }
+  }
+  
   mod inline_utils {
       pub const MULTIPLIER: i32 = 10;
   
@@ -60,8 +72,8 @@
   const BASE_VALUE: i32 = 100;
   
   fn main() {
-      let result1 = add(BASE_VALUE, 50);
-      let result2 = scale(5);
+      let result1 = math::add(BASE_VALUE, 50);
+      let result2 = inline_utils::scale(5);
   
       println!("Result 1: {}", result1);
       println!("Result 2: {}", result2);
@@ -71,10 +83,12 @@
 # ---
 # name: TestRustEdgeCasesSnapshots.test_string_literals_snapshot[rust_string_literals_preprocessed]
   '''
-  pub fn helper(x: i32) -> i32 {
-      // String in module should also be preserved
-      println!("Inside helper: mod should not be removed");
-      x * 2
+  mod utils {
+      pub fn helper(x: i32) -> i32 {
+          // String in module should also be preserved
+          println!("Inside helper: mod should not be removed");
+          x * 2
+      }
   }
   
   const MAX_SIZE: i32 = 1000;
@@ -88,7 +102,7 @@
   
       // But actual usage should work
       let size = MAX_SIZE;
-      let result = helper(size);
+      let result = utils::helper(size);
   
       println!("Result: {}", result);
   

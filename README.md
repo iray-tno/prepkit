@@ -195,7 +195,7 @@ uv run prepkit cpp minify my_solution.cpp -o minified.cpp
 
 ### Rust Preprocessor
 
-The `rust preprocess` command flattens multi-file Rust projects into a single file by inlining modules, replacing const/static values, and removing module qualifiers. Perfect for competitive programming platforms that require single-file submissions.
+The `rust preprocess` command flattens multi-file Rust projects into a single file by wrapping each `mod name;` declaration in an inline `mod name { ... }` block. This preserves every module's namespace, so items sharing a name across modules don't collide and all original paths keep resolving. Perfect for competitive programming platforms that require single-file submissions.
 
 ```bash
 uv run prepkit rust preprocess <file_path> [-I <include_path>]... [-D <NAME=VALUE>]... [-o <output_file>]
@@ -208,13 +208,12 @@ uv run prepkit rust preprocess <file_path> [-I <include_path>]... [-D <NAME=VALU
 
 **Features:**
 
-- **Module Flattening**: Resolves `mod name;` declarations and inlines module content
-- **Const/Static Inlining**: Replaces const and static variable references with their literal values
+- **Module Wrapping**: Resolves `mod name;` declarations and wraps each module's content in `mod name { ... }`, recursively, preserving namespaces
+- **No Name Collisions**: Items sharing a name across modules stay separate; original paths (`crate::a::b`, `std::collections::HashMap`, `Type::method`) keep resolving unchanged
 - **Custom Paths**: Supports `#[path = "..."]` attributes for custom module locations
 - **Conditional Compilation**: Preserves `#[cfg(...)]` attributes for platform-specific code
-- **Glob Imports**: Handles `use module::*;` statements correctly
+- **Glob & Use Imports**: Keeps `use module::*;` and other `use` statements intact
 - **Inline Modules**: Preserves inline `mod name { ... }` declarations
-- **Dependency Ordering**: Automatically orders modules based on dependencies
 - **Macro Preservation**: Keeps `macro_rules!` and procedural macros intact
 - **Auto-formatting**: Uses `rustfmt` if available for clean output
 
@@ -248,12 +247,14 @@ pub fn add(a: i32, b: i32) -> i32 {
 **Output (single file):**
 
 ```rust
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
+mod utils {
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
 }
 
 fn main() {
-    let result = add(5, 3);
+    let result = utils::add(5, 3);
     println!("Result: {}", result);
 }
 ```

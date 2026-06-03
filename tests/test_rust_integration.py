@@ -126,6 +126,54 @@ fn main() {
         assert "rs" in languages
 
 
+class TestRustPreprocessorNameCollisions:
+    """Modules are wrapped in `mod name { ... }` so same-named items don't collide.
+
+    Regression coverage for the issue where flattening inlined module bodies into
+    a single namespace, causing two modules that each define an item with the same
+    name (e.g. `helper`) to collide with E0428 ("defined multiple times").
+    """
+
+    def test_same_name_in_two_modules_does_not_collide(self):
+        """Two modules each defining `helper` must both survive, namespaced."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/name_collisions/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        # Both modules are wrapped, keeping their own namespace
+        assert "mod geometry {" in result
+        assert "mod search {" in result
+
+        # Both `helper` definitions are present (would be one, or a collision,
+        # under the old inlining approach)
+        assert result.count("pub fn helper() -> i32") == 2
+
+        # Qualified call sites are preserved, not stripped down to `helper()`
+        assert "geometry::helper()" in result
+        assert "search::helper()" in result
+
+    @pytest.mark.skipif(shutil.which("rustc") is None, reason="rustc not available")
+    def test_name_collisions_compile(self, tmp_path):
+        """The wrapped output must compile (old inlined output failed E0428)."""
+        preprocessor = RustPreprocessor()
+        main_file = Path("tests/fixtures/rust/name_collisions/main.rs")
+
+        result = preprocessor.preprocess(str(main_file), [])
+
+        output_rs = tmp_path / "output.rs"
+        output_rs.write_text(result)
+
+        compile_result = subprocess.run(
+            ["rustc", "--edition", "2021", "--crate-type", "bin",
+             str(output_rs), "-o", str(tmp_path / "bin")],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert compile_result.returncode == 0, (
+            f"Wrapped output should compile:\n{compile_result.stderr}"
+        )
+
+
 class TestRustPreprocessorCircularDependency:
     """Test circular dependency detection."""
 
@@ -292,16 +340,20 @@ class TestRustAdvancedFeatures:
 
         result = preprocessor.preprocess(str(main_file), [])
 
-        # Verify module content is inlined
+        # Verify module content is wrapped, not inlined into the root namespace
         assert "fn add(a: i32, b: i32) -> i32" in result
         assert "fn sub(a: i32, b: i32) -> i32" in result
         assert "fn mul(a: i32, b: i32) -> i32" in result
 
-        # Verify mod and use declarations are removed
+        # The `mod math;` declaration becomes an inline `mod math { ... }` block
         assert "mod math;" not in result
-        assert "use math::*" not in result
+        assert "mod math {" in result
 
-        # Verify function calls work (no qualifiers needed for glob imports)
+        # The glob import is preserved: with wrapping, `use math::*;` keeps
+        # resolving against the wrapped module, so it must NOT be stripped.
+        assert "use math::*" in result
+
+        # Verify function calls keep their original (unqualified) form
         assert "add(a, b)" in result
         assert "sub(a, b)" in result
         assert "mul(a, b)" in result
@@ -325,8 +377,10 @@ class TestRustAdvancedFeatures:
         # Verify main function is present
         assert "fn main()" in result
 
-        # NOTE: Current implementation removes qualifiers, which breaks inline modules
-        # This test documents the current behavior - may need fixing
+        # Inline modules pass through untouched, and qualified paths into them
+        # (utils::helper, utils::nested::inner) are preserved.
+        assert "utils::helper()" in result
+        assert "utils::nested::inner()" in result
 
     def test_cfg_attributes_preserved(self):
         """Test #[cfg(...)] conditional compilation attributes are preserved."""
