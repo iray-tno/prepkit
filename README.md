@@ -711,12 +711,14 @@ uv run pytest --benchmark-only
 The test suite includes advanced testing libraries:
 
 ```toml
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4"
-syrupy = "^4.6.0"         # Snapshot testing
-hypothesis = "^6.0.0"     # Property-based testing
-pytest-xdist = "^3.0.0"   # Parallel execution
-pytest-benchmark = "^4.0.0" # Performance testing
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4,<8.0",
+    "syrupy>=4.6.0,<5.0",            # Snapshot testing
+    "hypothesis>=6.0.0,<7.0",        # Property-based testing
+    "pytest-xdist>=3.0.0,<4.0",      # Parallel execution
+    "pytest-benchmark>=4.0.0,<5.0",  # Performance testing
+]
 ```
 
 ### Test Data
@@ -731,7 +733,7 @@ Realistic test cases include:
 
 PrepKit is designed with a plugin-based architecture, allowing easy extension for new programming languages or functionalities.
 
-Plugins are discovered via Python's `entry_points` mechanism. New preprocessors or minifiers for different languages can be added by creating a Python class that inherits from `BasePreprocessor` or `BaseMinifier` (defined in `src/base_interfaces.py`) and registering it in your `pyproject.toml` under the `[tool.poetry.plugins."prepkit.preprocessors"]` or `[tool.poetry.plugins."prepkit.minifiers"]` sections.
+Plugins are discovered via Python's `entry_points` mechanism. New preprocessors or minifiers for different languages can be added by creating a Python class that inherits from `BasePreprocessor` or `BaseMinifier` (defined in `src/base_interfaces.py`) and registering it in your `pyproject.toml` under the `[project.entry-points."prepkit.preprocessors"]` or `[project.entry-points."prepkit.minifiers"]` sections.
 
 ### Current Plugin Support
 
@@ -741,18 +743,21 @@ Plugins are discovered via Python's `entry_points` mechanism. New preprocessors 
   - Constexpr replacement (integer literals)
   - Comment removal and code minification
   - Build verification with g++
+- **Rust**: Preprocessor and minifier
+  - Module flattening via `mod name { ... }` wrapping (recursive, namespace-preserving)
+  - Tunable parameter injection, custom paths, conditional compilation
+  - Build verification with rustc
 
 **Planned:**
-- **Rust**: Basic preprocessor and minifier (plugin structure ready)
 - **Kotlin**: Basic preprocessor and minifier (plugin structure ready)
 
 **Example `pyproject.toml` entry for a custom plugin:**
 
 ```toml
-[tool.poetry.plugins."prepkit.preprocessors"]
+[project.entry-points."prepkit.preprocessors"]
 my_lang = "my_plugin_package.my_module:MyLangPreprocessor"
 
-[tool.poetry.plugins."prepkit.minifiers"]
+[project.entry-points."prepkit.minifiers"]
 my_lang = "my_plugin_package.my_module:MyLangMinifier"
 ```
 
@@ -819,18 +824,19 @@ This dual approach ensures PrepKit evolves based on real-world usage while maint
 
 ## Contributing
 
-Contributions are welcome! Please refer to the development plan (`競技プログラミング支援ツール開発計画.md`) for detailed architectural decisions and future roadmap.
+Contributions are welcome! See [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) for the full guide, including our **issue-first workflow** (branch naming, commit conventions, and PR process). For architectural background and the roadmap, see the development plan (`競技プログラミング支援ツール開発計画.md`).
 
 ### Development Setup
 
 1. **Clone the repository**
-2. **Install dependencies**: `uv sync`
-3. **Install system dependencies**: `libclang-18` and `clang-format`
+2. **Install dependencies**: `uv sync --all-extras`
+3. **Install system dependencies**: `libclang-dev` and `clang-format` (C++), and `rustc` (Rust)
 4. **Run tests**: `uv run pytest`
 5. **Check build verification**: `uv run pytest -m build`
 
 ### Pull Request Guidelines
 
+- Start from a GitHub issue and follow the [issue-first workflow](.github/CONTRIBUTING.md#issue-first-workflow): branch `feature/<issue-number>_<description>`, commit `#<num> <type>: ...`, and `Closes #<num>` in the PR
 - Ensure all tests pass, including build verification tests
 - Add appropriate test coverage for new features
 - Update documentation for user-facing changes
