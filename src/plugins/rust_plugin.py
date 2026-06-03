@@ -2,10 +2,9 @@ import click
 import os
 import re
 import subprocess
-from collections import defaultdict
-from typing import List, Tuple, Dict, Set, Optional
+from typing import List, Dict, Optional
 from base_interfaces import BasePreprocessor, BaseMinifier
-from preprocessing_utils import topological_sort_files, StringLiteralProtector, report_circular_dependency_error
+from preprocessing_utils import StringLiteralProtector, report_circular_dependency_error
 
 
 class RustPreprocessor(BasePreprocessor):
@@ -14,6 +13,13 @@ class RustPreprocessor(BasePreprocessor):
     def preprocess(self, file_path: str, include_paths: List[str], defines: Dict[str, str] = None) -> str:
         """
         Preprocess a Rust project by flattening modules into a single file.
+
+        Modules are flattened by *wrapping* each `mod name;` declaration in an
+        inline `mod name { ... }` block rather than inlining their raw bodies
+        into a shared namespace. This preserves every module's own namespace, so
+        items sharing a name across modules no longer collide, and all original
+        paths (`crate::a::b`, `std::collections::HashMap`, `Type::method`,
+        `use foo::bar`) keep resolving without any qualifier rewriting.
 
         Args:
             file_path: Path to the entry file (main.rs or lib.rs)
@@ -28,167 +34,162 @@ class RustPreprocessor(BasePreprocessor):
         if defines:
             click.echo(f"Injecting {len(defines)} tunable parameter(s): {list(defines.keys())}")
 
-        # Setup include paths
+        # Setup include paths (the entry file's directory is always searched).
         all_include_paths: List[str] = list(include_paths)
         file_dir: str = os.path.dirname(file_path)
         if file_dir not in all_include_paths:
             all_include_paths.insert(0, file_dir)
 
-        # Discover all modules
-        all_files_result = self._discover_modules(file_path, all_include_paths)
+        # Recursively expand every `mod name;` declaration into `mod name { ... }`.
+        combined_content: Optional[str] = self._expand_file(file_path, all_include_paths, [])
 
-        if all_files_result is None:
-            # Module discovery failed
+        if combined_content is None:
+            # A module could not be resolved, or a circular dependency was found.
+            # The specific error has already been reported to stderr.
             return ""
 
-        all_files: Set[str] = all_files_result
+        # Format output with rustfmt if available
+        combined_content = self._format_with_rustfmt(combined_content)
 
-        # Build dependency graph
-        graph, in_degree = self._build_dependency_graph(list(all_files), all_include_paths)
+        # Inject tunable parameters
+        if defines:
+            combined_content = self._inject_tunable_params(combined_content, defines)
 
-        # Topological sort
-        sorted_files, cycle_files = topological_sort_files(graph, in_degree, list(all_files))
+        return combined_content
 
-        if sorted_files:
-            # Combine files in dependency order
-            combined_content: str = ""
-            mod_regex: re.Pattern = re.compile(r'^\s*(?:pub\s+)?mod\s+\w+\s*;.*\n?', re.MULTILINE)
-            # Remove use statements that reference internal modules (simplified approach)
-            # This will remove entire lines like: use utils::math::{gcd, lcm};
-            # For competitive programming, we can be aggressive here
-            use_regex: re.Pattern = re.compile(r'^\s*use\s+(?!std|core|alloc)\w+::.*\n?', re.MULTILINE)
-            # Remove module qualifiers like utils:: from function calls
-            qualifier_regex: re.Pattern = re.compile(r'\b\w+::(?=\w+)', re.MULTILINE)
-
-            # Regex to match #[path = "..."] attributes (to remove them after processing)
-            path_attr_regex: re.Pattern = re.compile(r'#\[path\s*=\s*"[^"]+"\]\s*\n?', re.MULTILINE)
-
-            for f in sorted_files:
-                with open(f, 'r') as source_file:
-                    source_content: str = source_file.read()
-                    # Remove mod declarations (they're being inlined)
-                    source_content = mod_regex.sub("", source_content)
-                    # Remove #[path = "..."] attributes (after we've used them)
-                    source_content = path_attr_regex.sub("", source_content)
-                    # Remove internal use statements (but keep std, core, alloc)
-                    source_content = use_regex.sub("", source_content)
-                    combined_content += source_content + "\n"
-
-            # Remove module qualifiers (utils::, math::, etc.) from the combined content
-            # Keep std::, core::, alloc:: qualifiers
-            # This regex matches module_name:: but not std::, core::, or alloc::
-            def keep_std_qualifiers(match):
-                qualifier = match.group(1)
-                if qualifier in ('std', 'core', 'alloc'):
-                    return match.group(0)  # Keep it
-                return ''  # Remove it
-
-            combined_content = re.sub(r'\b(\w+)::(?=\w)', keep_std_qualifiers, combined_content)
-
-            # Format output with rustfmt if available
-            try:
-                temp_file_path: str = "temp_combined.rs"
-                with open(temp_file_path, "w") as f:
-                    f.write(combined_content)
-
-                result = subprocess.run(
-                    ['rustfmt', temp_file_path],
-                    capture_output=True,
-                    text=True
-                )
-
-                if result.returncode == 0:
-                    with open(temp_file_path, "r") as f:
-                        combined_content = f.read()
-
-                os.remove(temp_file_path)
-            except (FileNotFoundError, subprocess.SubprocessError):
-                # rustfmt not available, use unformatted output
-                pass
-
-            # Inject tunable parameters
-            if defines:
-                combined_content = self._inject_tunable_params(combined_content, defines)
-
-            return combined_content
-        else:
-            # Report circular dependency error
-            report_circular_dependency_error(cycle_files, language="Rust")
-            return ""
-
-    def _discover_modules(self, file_path: str, include_paths: List[str]) -> Optional[Set[str]]:
+    def _expand_file(
+        self, file_path: str, include_paths: List[str], stack: List[str]
+    ) -> Optional[str]:
         """
-        Discover all modules referenced via 'mod' declarations.
-
-        Supports:
-        - Standard mod declarations: mod utils;
-        - Custom paths: #[path = "my_file.rs"] mod utils;
+        Read a file and recursively expand its `mod name;` declarations into
+        inline `mod name { ... }` blocks.
 
         Args:
-            file_path: Starting file path
-            include_paths: Directories to search for modules
+            file_path: File to expand (the entry file or a module file)
+            include_paths: Directories to search for module files
+            stack: Chain of files currently being expanded, used to detect
+                   circular `mod` references and avoid infinite recursion
 
         Returns:
-            Set of absolute file paths for all discovered modules, or None on error
+            The file's source with all module declarations expanded, or None if a
+            module cannot be found or a circular dependency is detected.
         """
-        all_files: Set[str] = {os.path.abspath(file_path)}
-        # Match: mod module_name; or pub mod module_name;
-        # Note: This won't match inline modules like "mod utils { ... }"
-        mod_regex: re.Pattern = re.compile(r'^\s*(?:pub\s+)?mod\s+(\w+)\s*;', re.MULTILINE)
-        # Match: #[path = "custom/path.rs"] appearing before mod declaration
-        path_attr_regex: re.Pattern = re.compile(r'#\[path\s*=\s*"([^"]+)"\]', re.MULTILINE)
-        # Match: #[cfg(...)] appearing before mod declaration
-        cfg_attr_regex: re.Pattern = re.compile(r'#\[cfg\([^)]+\)\]', re.MULTILINE)
+        abs_path: str = os.path.abspath(file_path)
+        if abs_path in stack:
+            # Following mod declarations led back to a file already being expanded.
+            cycle_start = stack.index(abs_path)
+            report_circular_dependency_error(stack[cycle_start:] + [abs_path], language="Rust")
+            return None
 
-        files_to_scan: List[str] = [file_path]
+        with open(file_path, 'r') as f:
+            content: str = f.read()
 
-        while files_to_scan:
-            current_file: str = files_to_scan.pop(0)
-            with open(current_file, 'r') as f:
-                content: str = f.read()
+        # Only declarations anchored at the start of a line are expanded, so
+        # `mod x;` or `#[path = "..."]` text that merely appears inside a string
+        # literal mid-line is left untouched.
+        return self._expand_mod_declarations(
+            content, file_path, include_paths, stack + [abs_path]
+        )
 
-            # Find all mod declarations with their positions
-            for match in mod_regex.finditer(content):
-                module_name: str = match.group(1)
-                custom_path: Optional[str] = None
+    def _expand_mod_declarations(
+        self, content: str, current_file: str, include_paths: List[str], stack: List[str]
+    ) -> Optional[str]:
+        """
+        Replace each `mod name;` declaration in `content` with an inline
+        `mod name { <expanded module body> }` block.
 
-                # Calculate line number for error reporting
-                line_number = content[:match.start()].count('\n') + 1
+        - cfg-gated modules (preceded by `#[cfg(...)]`) are left untouched so
+          conditional-compilation semantics are preserved.
+        - `#[path = "..."]` attributes are consumed to locate the module file
+          and then removed from the output.
 
-                # Check if there's a #[cfg(...)] attribute before this mod declaration
-                # If so, skip this module (it's conditionally compiled)
-                content_before_mod = content[:match.start()]
-                cfg_matches = list(cfg_attr_regex.finditer(content_before_mod))
-                if cfg_matches:
-                    last_cfg_match = cfg_matches[-1]
-                    # If #[cfg] is within 100 chars of mod declaration, skip this module
-                    if match.start() - last_cfg_match.end() < 100:
-                        # Skip cfg-gated modules - they should be preserved as-is
-                        continue
+        Args:
+            content: String-literal-protected source of a single file
+            current_file: Path of the file `content` came from (for resolution)
+            include_paths: Directories to search for module files
+            stack: Chain of files currently being expanded (for cycle detection)
 
-                # Check if there's a #[path = "..."] attribute before this mod declaration
-                # Look backwards from the mod declaration
-                # Find the last #[path = "..."] in the content before this mod
-                path_matches = list(path_attr_regex.finditer(content_before_mod))
-                if path_matches:
-                    # Check if the #[path = ...] is close to the mod (within ~100 chars)
-                    last_path_match = path_matches[-1]
-                    if match.start() - last_path_match.end() < 100:
-                        custom_path = last_path_match.group(1)
+        Returns:
+            The content with declarations expanded, or None on error.
+        """
+        # Match `mod name;` capturing leading indentation, visibility, and name.
+        # Inline modules (`mod name { ... }`) end in `{` and are left as-is.
+        mod_regex = re.compile(
+            r'^([ \t]*)((?:pub\s*(?:\([^)]*\)\s*)?)?)mod\s+(\w+)\s*;',
+            re.MULTILINE,
+        )
+        path_attr_regex = re.compile(r'#\[\s*path\s*=\s*"([^"]+)"\s*\]')
+        cfg_attr_regex = re.compile(r'#\[\s*cfg\([^)]*\)\s*\]')
 
-                module_file: Optional[str] = self._resolve_module_path(
-                    module_name, current_file, include_paths, custom_path, line_number
-                )
+        parts: List[str] = []
+        cursor = 0
+        for match in mod_regex.finditer(content):
+            indent = match.group(1)
+            visibility = match.group(2) or ""
+            module_name = match.group(3)
+            line_number = content[:match.start()].count('\n') + 1
 
-                if module_file is None:
-                    # Module not found - return None to indicate error
-                    return None
+            before = content[cursor:match.start()]
+            content_before = content[:match.start()]
 
-                if module_file not in all_files:
-                    all_files.add(module_file)
-                    files_to_scan.append(module_file)
+            # Leave cfg-gated modules as-is (they are conditionally compiled).
+            cfg_matches = list(cfg_attr_regex.finditer(content_before))
+            if cfg_matches and match.start() - cfg_matches[-1].end() < 100:
+                parts.append(before)
+                parts.append(match.group(0))
+                cursor = match.end()
+                continue
 
-        return all_files
+            # Pick up a nearby #[path = "..."] attribute and strip it from output.
+            custom_path: Optional[str] = None
+            path_matches = list(path_attr_regex.finditer(content_before))
+            if path_matches and match.start() - path_matches[-1].end() < 100:
+                custom_path = path_matches[-1].group(1)
+                rel_start = path_matches[-1].start() - cursor
+                rel_end = path_matches[-1].end() - cursor
+                before = before[:rel_start] + before[rel_end:]
+
+            module_file = self._resolve_module_path(
+                module_name, current_file, include_paths, custom_path, line_number
+            )
+            if module_file is None:
+                return None  # error already reported
+
+            child_body = self._expand_file(module_file, include_paths, stack)
+            if child_body is None:
+                return None  # cycle or nested error already reported
+
+            wrapped = f"{indent}{visibility}mod {module_name} {{\n{child_body}\n}}"
+            parts.append(before)
+            parts.append(wrapped)
+            cursor = match.end()
+
+        parts.append(content[cursor:])
+        return "".join(parts)
+
+    def _format_with_rustfmt(self, content: str) -> str:
+        """Format Rust source with rustfmt if it is available, else return as-is."""
+        try:
+            temp_file_path: str = "temp_combined.rs"
+            with open(temp_file_path, "w") as f:
+                f.write(content)
+
+            result = subprocess.run(
+                ['rustfmt', temp_file_path],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                with open(temp_file_path, "r") as f:
+                    content = f.read()
+
+            os.remove(temp_file_path)
+        except (FileNotFoundError, subprocess.SubprocessError):
+            # rustfmt not available, use unformatted output
+            pass
+
+        return content
 
     def _resolve_module_path(
         self, module_name: str, current_file: str, include_paths: List[str], 
@@ -257,70 +258,6 @@ class RustPreprocessor(BasePreprocessor):
             err=True
         )
         return None
-
-    def _build_dependency_graph(
-        self, files: List[str], include_paths: List[str]
-    ) -> Tuple[Dict[str, List[str]], Dict[str, int]]:
-        """
-        Build a dependency graph for the modules.
-
-        Args:
-            files: List of all module file paths
-            include_paths: Directories to search for modules
-
-        Returns:
-            Tuple of (graph, in_degree) where:
-            - graph[A] = [B, C] means A is imported by B and C
-            - in_degree[B] = N means B depends on N other modules
-        """
-        graph: Dict[str, List[str]] = defaultdict(list)
-        in_degree: Dict[str, int] = defaultdict(int)
-
-        mod_regex: re.Pattern = re.compile(r'^\s*(?:pub\s+)?mod\s+(\w+)\s*;', re.MULTILINE)
-        path_attr_regex: re.Pattern = re.compile(r'#\[path\s*=\s*"([^"]+)"\]', re.MULTILINE)
-        cfg_attr_regex: re.Pattern = re.compile(r'#\[cfg\([^)]+\)\]', re.MULTILINE)
-
-        for file_path in files:
-            if not os.path.exists(file_path):
-                continue
-
-            with open(file_path, 'r') as f:
-                content: str = f.read()
-
-            for match in mod_regex.finditer(content):
-                module_name: str = match.group(1)
-                custom_path: Optional[str] = None
-
-                # Calculate line number for error reporting
-                line_number = content[:match.start()].count('\n') + 1
-
-                # Check if there's a #[cfg(...)] attribute before this mod declaration
-                # If so, skip this module (it's conditionally compiled)
-                content_before_mod = content[:match.start()]
-                cfg_matches = list(cfg_attr_regex.finditer(content_before_mod))
-                if cfg_matches:
-                    last_cfg_match = cfg_matches[-1]
-                    if match.start() - last_cfg_match.end() < 100:
-                        # Skip cfg-gated modules
-                        continue
-
-                # Check for #[path = "..."] attribute before this mod
-                path_matches = list(path_attr_regex.finditer(content_before_mod))
-                if path_matches:
-                    last_path_match = path_matches[-1]
-                    if match.start() - last_path_match.end() < 100:
-                        custom_path = last_path_match.group(1)
-
-                module_file: Optional[str] = self._resolve_module_path(
-                    module_name, file_path, include_paths, custom_path, line_number
-                )
-
-                if module_file:
-                    # module_file is depended upon by file_path
-                    graph[module_file].append(os.path.abspath(file_path))
-                    in_degree[os.path.abspath(file_path)] += 1
-
-        return graph, in_degree
 
     def _inject_tunable_params(self, content: str, defines: Dict[str, str]) -> str:
         """
