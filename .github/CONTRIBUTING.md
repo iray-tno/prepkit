@@ -50,49 +50,68 @@ uv run pytest
 - Build verification: Tests marked with `@pytest.mark.build`
 - Snapshot tests: Tests using syrupy
 
-## Pull Request Process
+## Issue-First Workflow
 
-1. **Create a feature branch** from `main`
+PrepKit follows an **issue-first workflow**: every change traces back to a
+GitHub issue, so the branch, commits, and PR all reference the same number.
+This keeps history easy to follow and ties each PR to its motivation.
+
+The lifecycle of a change is:
+
+1. **Start from an issue.** Open (or pick up) a GitHub issue describing the
+   bug or feature. If you're about to send a PR for something that has no
+   issue yet, create the issue first.
+
+2. **Create a branch** from `main`, named
+   `feature/<issue-number>_<short_snake_case_description>`:
    ```bash
-   git checkout -b feature/your-feature-name
+   git checkout main && git pull
+   git checkout -b feature/12_add_kotlin_preprocessor
    ```
 
-2. **Make your changes**
+3. **Make your changes**
    - Write clean, documented code
    - Add tests for new functionality
    - Update documentation as needed
 
-3. **Test locally**
+4. **Test locally**
    ```bash
    # Run all tests
    uv run pytest -v
 
-   # Check specific test file
+   # Check a specific test file
    uv run pytest tests/test_your_feature.py -v
    ```
 
-4. **Commit with clear messages**
+5. **Commit**, prefixing the subject with the issue reference
+   `#<num> <type>: <summary>` (see Commit Message Guidelines):
    ```bash
-   git commit -m "feat: add new feature X"
-   # or
-   git commit -m "fix: resolve issue with Y"
-   # or
-   git commit -m "docs: update README for Z"
+   git commit -m "#12 feat: add Kotlin preprocessor"
    ```
 
-5. **Push and create PR**
+6. **Push and open a PR** targeting `main`. Include `Closes #<num>` in the
+   PR body so the issue closes automatically when the PR is merged:
    ```bash
-   git push origin feature/your-feature-name
+   git push -u origin feature/12_add_kotlin_preprocessor
    ```
-   Then open a pull request on GitHub
 
-6. **Wait for CI**
-   - GitHub Actions will run all tests
-   - Fix any failing tests before requesting review
+7. **Wait for CI.** GitHub Actions runs the full test suite — fix any
+   failures before requesting review.
+
+> Stacked work: if a change naturally builds on another that isn't merged
+> yet, branch off that branch instead of `main` and rebase onto `main`
+> once the base PR lands.
 
 ## Commit Message Guidelines
 
-We follow conventional commits:
+Commit subjects start with the issue reference, followed by a
+[conventional commits](https://www.conventionalcommits.org/) type:
+
+```
+#<issue-number> <type>: <summary>
+```
+
+Types:
 
 - `feat:` - New feature
 - `fix:` - Bug fix
@@ -104,10 +123,10 @@ We follow conventional commits:
 
 Examples:
 ```
-feat: add Kotlin preprocessor support
-fix: resolve include path resolution on Windows
-docs: update installation instructions
-test: add integration tests for Rust preprocessor
+#12 feat: add Kotlin preprocessor support
+#8 fix: resolve include path resolution on Windows
+#5 docs: sync README.ja.md with current Rust support
+#2 test: add integration tests for Rust preprocessor
 ```
 
 ## Keeping Your Repo Clean
