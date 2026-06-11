@@ -98,10 +98,7 @@ benchmark_results/
 submit.cpp
 submit.rs
 
-# Serena
-.serena/*
-!.serena/project.yml
-
 # Local config overrides
 prepkit_config.local.yaml
 .prepkit/local/
+.serena/
