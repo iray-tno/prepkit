@@ -183,11 +183,19 @@ class RustPreprocessor(BasePreprocessor):
             if result.returncode == 0:
                 with open(temp_file_path, "r") as f:
                     content = f.read()
+            else:
+                details = (result.stderr or result.stdout or "").strip()
+                message = f"Warning: rustfmt failed with exit code {result.returncode}. Using unformatted output."
+                if details:
+                    message = f"{message}\n{details}"
+                click.echo(message, err=True)
 
             os.remove(temp_file_path)
-        except (FileNotFoundError, subprocess.SubprocessError):
+        except FileNotFoundError:
             # rustfmt not available, use unformatted output
-            pass
+            click.echo("Warning: rustfmt not found. Using unformatted output.", err=True)
+        except subprocess.SubprocessError as e:
+            click.echo(f"Warning: rustfmt failed: {e}. Using unformatted output.", err=True)
 
         return content
 
