@@ -204,6 +204,23 @@ class TestCppMinifyCommand:
         assert "#include <iostream>" in content
 
 
+class TestProjectCommand:
+    """Test project scaffolding behavior."""
+
+    def test_project_new_does_not_generate_mcp_config(self, tmp_path, monkeypatch):
+        """Project scaffolding should not advertise or generate MCP config."""
+        monkeypatch.chdir(tmp_path)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ['project', 'new', 'sample_project', '--type', 'kaggle'])
+
+        assert result.exit_code == 0
+        project_dir = tmp_path / "sample_project"
+        assert project_dir.exists()
+        assert not (project_dir / ".mcp.json").exists()
+        assert "MCP" not in result.output
+
+
 class TestTestCommand:
     """Test the test command for competitive programming."""
 

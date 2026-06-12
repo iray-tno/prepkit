@@ -86,32 +86,5 @@ def new(project_name, lang, type):
                 except FileNotFoundError:
                     click.echo(f"Warning: Claude settings template '{claude_settings_file}' not found", err=True)
 
-        # Setup MCP configuration based on contest type
-        mcp_config_file = None
-        if claude_config.get("enabled", False):
-            platform = selected_config.get("contest_settings", {}).get("platform", "")
-            if platform == "kaggle":
-                mcp_config_file = "kaggle_mcp.json"
-            elif platform == "codingame":
-                mcp_config_file = "codingame_mcp.json"
-            else:
-                mcp_config_file = "kaggle_mcp.json"  # Default enabled config
-        else:
-            mcp_config_file = "disabled_mcp.json"
-
-        # Copy the appropriate MCP settings
-        if mcp_config_file:
-            mcp_template_path = os.path.join(os.path.dirname(__file__), "..", "boilerplate", "mcp_configs", mcp_config_file)
-            mcp_dest_path = os.path.join(destination_path, ".mcp.json")
-
-            try:
-                shutil.copy2(mcp_template_path, mcp_dest_path)
-                if claude_config.get("enabled", False):
-                    click.echo(f"✓ MCP (Serena) enabled for intelligent code assistance")
-                else:
-                    click.echo(f"✗ MCP disabled for contest compliance")
-            except FileNotFoundError:
-                click.echo(f"Warning: MCP settings template '{mcp_config_file}' not found", err=True)
-
     except Exception as e:
         click.echo(f"Error creating project: {e}", err=True)
