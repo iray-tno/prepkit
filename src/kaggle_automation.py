@@ -6,15 +6,20 @@ import time
 import re
 from typing import Any, Dict, Optional
 
-def _log_to_wandb(submission_info: Dict[str, Any], competition: str, message: str) -> None:
-    """Log Kaggle submission information to WandB if available and currently running."""
+
+def _get_wandb() -> Optional[Any]:
+    """Return the WandB module when available, otherwise None."""
     try:
         import wandb
-        WANDB_AVAILABLE = True
     except ImportError:
-        WANDB_AVAILABLE = False
+        return None
+    return wandb
 
-    if not WANDB_AVAILABLE:
+
+def _log_to_wandb(submission_info: Dict[str, Any], competition: str, message: str) -> None:
+    """Log Kaggle submission information to WandB if available and currently running."""
+    wandb = _get_wandb()
+    if wandb is None:
         click.echo("WandB not available. Skipping experiment logging.")
         return
 
@@ -204,7 +209,8 @@ def update_scores(
     Fetch latest Kaggle submission scores and update WandB experiment with results.
     Useful for linking local experiment metrics with competition performance.
     """
-    if not WANDB_AVAILABLE:
+    wandb = _get_wandb()
+    if wandb is None:
         click.echo("WandB not available. Cannot update experiment scores.", err=True)
         return
         
