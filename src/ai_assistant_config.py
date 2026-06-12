@@ -5,6 +5,30 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+
+SECOND_OPINION_ASSISTANTS = {
+    "claude-code": {
+        "commands": ["claude"],
+        "label": "Claude Code",
+        "invoke": '{command} -p "$PROMPT" < /dev/null',
+    },
+    "codex": {
+        "commands": ["codex"],
+        "label": "Codex",
+        "invoke": '{command} exec "$PROMPT" < /dev/null',
+    },
+    "gemini-cli": {
+        "commands": ["gemini", "gemini-cli"],
+        "label": "Gemini CLI",
+        "invoke": '{command} -p "$PROMPT" < /dev/null',
+    },
+    "antigravity": {
+        "commands": ["antigravity"],
+        "label": "Antigravity",
+        "invoke": '{command} "$PROMPT" < /dev/null',
+    },
+}
+
 @click.group()
 def ai_config():
     """Configure AI coding assistants for optimal PrepKit workflows."""
@@ -49,6 +73,101 @@ def setup_assistant_config(assistant: str, config_source: Path, workspace_path: 
         setup_claude_code_specific(workspace_path)
     elif assistant == 'gemini-cli':
         setup_gemini_specific(workspace_path)
+
+
+def detect_installed_second_opinion_assistants() -> Dict[str, str]:
+    """Return supported assistant names mapped to their detected CLI command."""
+    installed = {}
+    for assistant, config in SECOND_OPINION_ASSISTANTS.items():
+        for command in config["commands"]:
+            resolved = shutil.which(command)
+            if resolved:
+                installed[assistant] = command
+                break
+    return installed
+
+
+def _render_second_opinion_script(target_name: str, target_command: str) -> str:
+    target_config = SECOND_OPINION_ASSISTANTS[target_name]
+    invocation = target_config["invoke"].format(command=target_command)
+    return f'''#!/bin/bash
+set -euo pipefail
+
+if [ "$#" -eq 0 ]; then
+    echo "Usage: $0 <question or review request>" >&2
+    exit 1
+fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+CONTEXT_FILE="$ROOT_DIR/.prepkit/second-opinion/context.md"
+REQUEST="$*"
+
+if [ -f "$CONTEXT_FILE" ]; then
+    CONTEXT="$(cat "$CONTEXT_FILE")"
+else
+    CONTEXT="No shared project context file found."
+fi
+
+PROMPT="$(cat <<EOF
+You are giving an independent second opinion on a PrepKit task.
+
+Shared project context:
+$CONTEXT
+
+Request:
+$REQUEST
+
+Respond with:
+- the strongest technical concern or alternative you see
+- concrete files or commands to inspect next
+- assumptions that should be verified by local tests or measurements
+EOF
+)"
+
+{invocation}
+'''
+
+
+def scaffold_second_opinion(workspace_path: Path, installed: Dict[str, str]) -> None:
+    """Create symmetric second-opinion scripts for the installed assistants."""
+    base_dir = workspace_path / '.prepkit' / 'second-opinion'
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    context_file = base_dir / 'context.md'
+    if not context_file.exists():
+        context_file.write_text('''# PrepKit Second-Opinion Context
+
+Summarize the current task, constraints, rejected ideas, and local verification commands here before asking another assistant for review.
+
+Ground rules:
+- Treat second opinions as proposals, not truth.
+- Verify suggestions with local tests, benchmarks, or targeted code inspection.
+- Prefer concrete file paths, commands, and measurable claims.
+''')
+        click.echo(f"🧭 Created shared context primer: {context_file}")
+
+    for source_name in installed:
+        source_dir = base_dir / source_name
+        source_dir.mkdir(parents=True, exist_ok=True)
+
+        target_names = [name for name in installed if name != source_name]
+        readme_lines = [
+            f"# Second opinions for {SECOND_OPINION_ASSISTANTS[source_name]['label']}",
+            "",
+            "Use these scripts to ask a different installed assistant for an independent review.",
+            "Update `../context.md` first so the consulted assistant has project-specific grounding.",
+            "",
+        ]
+
+        for target_name in target_names:
+            script_name = f"ask-{target_name}.sh"
+            script_file = source_dir / script_name
+            script_file.write_text(_render_second_opinion_script(target_name, installed[target_name]))
+            script_file.chmod(0o755)
+            readme_lines.append(f"- `{script_name}` asks {SECOND_OPINION_ASSISTANTS[target_name]['label']}.")
+
+        (source_dir / "README.md").write_text("\n".join(readme_lines) + "\n")
+        click.echo(f"🔁 Created {len(target_names)} second-opinion script(s) for {source_name}")
 
 def setup_copilot_specific(workspace_path: Path) -> None:
     """Set up GitHub Copilot specific configuration."""
@@ -312,6 +431,25 @@ def status(assistant: Optional[str]) -> None:
                     click.echo(f"   🔧 Scripts available: {len(scripts)}")
         else:
             click.echo(f"❌ {ai_assistant}: Not configured")
+
+
+@ai_config.command(name="second-opinion")
+@click.option('--workspace-dir', type=click.Path(), default='.', help="Target workspace directory (default: current directory)")
+def second_opinion(workspace_dir: str) -> None:
+    """Scaffold cross-AI second-opinion scripts for installed assistant CLIs."""
+    workspace_path = Path(workspace_dir).resolve()
+    installed = detect_installed_second_opinion_assistants()
+
+    if len(installed) < 2:
+        click.echo("❌ Need at least two supported assistant CLIs installed for second-opinion scaffolding.")
+        supported = ", ".join(SECOND_OPINION_ASSISTANTS.keys())
+        click.echo(f"   Supported assistants: {supported}")
+        return
+
+    detected = ", ".join(installed.keys())
+    click.echo(f"Detected assistant CLIs: {detected}")
+    scaffold_second_opinion(workspace_path, installed)
+    click.echo("✅ Cross-AI second-opinion scaffolding complete!")
 
 @ai_config.command()
 @click.argument('assistant', type=click.Choice(['claude-code', 'github-copilot', 'gemini-cli']))
