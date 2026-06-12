@@ -1,6 +1,6 @@
 import pytest
 import os
-from plugins.cpp_plugin import CppPreprocessor, CppMinifier
+from plugins.cpp_plugin import CppPreprocessor, CppMinifier, _strip_cpp_comments
 
 @pytest.fixture
 def cpp_preprocessor():
@@ -57,6 +57,38 @@ def test_cpp_preprocess_comments(cpp_preprocessor, temp_files):
     assert "* comment */" not in output
     assert "int main() { return 0; }" in output
 
+def test_strip_cpp_comments_preserves_string_and_char_literals():
+    code = r'''
+std::string url = "https://example.com/path";
+std::string marker = "/* not a comment */";
+char slash = '/';
+int value = 1; // real comment
+/* block comment */
+int next = 2;
+'''
+
+    output = _strip_cpp_comments(code)
+
+    assert '"https://example.com/path"' in output
+    assert '"/* not a comment */"' in output
+    assert "char slash = '/';" in output
+    assert "real comment" not in output
+    assert "block comment" not in output
+    assert "int next = 2;" in output
+
+def test_strip_cpp_comments_preserves_raw_string_literals():
+    code = r'''
+auto raw = R"tag(// not a comment
+/* also not a comment */)tag";
+int value = 1; // real comment
+'''
+
+    output = _strip_cpp_comments(code)
+
+    assert 'R"tag(// not a comment' in output
+    assert "/* also not a comment */)tag" in output
+    assert "real comment" not in output
+
 def test_cpp_minify(cpp_minifier, temp_files):
     minify_file = temp_files / "minify_test.cpp"
     output = cpp_minifier.minify(str(minify_file))
@@ -70,6 +102,25 @@ def test_cpp_minify(cpp_minifier, temp_files):
     assert "/*" not in output               # Multi-line comments removed
     assert "*/" not in output               # Multi-line comments removed
     # Note: Some whitespace and newlines are preserved for compilation compatibility
+
+def test_cpp_minify_preserves_comment_markers_inside_literals(cpp_minifier, tmp_path):
+    source = tmp_path / "strings.cpp"
+    source.write_text(r'''
+#include <string>
+int main() {
+    std::string url = "https://example.com";
+    std::string marker = "/* not a comment */";
+    auto raw = R"(// not a comment)";
+    return url.size() + marker.size() + raw.size(); // real comment
+}
+''')
+
+    output = cpp_minifier.minify(str(source))
+
+    assert '"https://example.com"' in output
+    assert '"/* not a comment */"' in output
+    assert 'R"(// not a comment)"' in output
+    assert "real comment" not in output
 
 def test_cpp_minify_does_not_create_fixed_temp_file(cpp_minifier, temp_files, monkeypatch):
     monkeypatch.chdir(temp_files)
