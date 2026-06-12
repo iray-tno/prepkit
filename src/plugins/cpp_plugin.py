@@ -8,6 +8,24 @@ from typing import List, Tuple, Dict, Set, Any
 from base_interfaces import BasePreprocessor, BaseMinifier
 from preprocessing_utils import topological_sort_files, report_circular_dependency_error
 
+
+def _run_clang_format(command: List[str]) -> None:
+    """Run clang-format and raise a clear Click error on failure."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except FileNotFoundError as e:
+        raise click.ClickException(
+            "clang-format not found. Please install clang-format and ensure it is in PATH."
+        ) from e
+
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout or "").strip()
+        message = f"clang-format failed with exit code {result.returncode}"
+        if details:
+            message = f"{message}:\n{details}"
+        raise click.ClickException(message)
+
+
 class CppPreprocessor(BasePreprocessor):
     def preprocess(self, file_path: str, include_paths: List[str], defines: Dict[str, str] = None) -> str:
         """
@@ -64,7 +82,7 @@ class CppPreprocessor(BasePreprocessor):
                 f.write(combined_content)
 
             # First clang-format pass for initial formatting
-            subprocess.run(['clang-format', '-i', temp_file_path])
+            _run_clang_format(['clang-format', '-i', temp_file_path])
 
             with open(temp_file_path, "r") as f:
                 processed_content: str = f.read()
@@ -96,7 +114,7 @@ class CppPreprocessor(BasePreprocessor):
                 with open(temp_file_path, "w") as f:
                     f.write(processed_content)
 
-                subprocess.run(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
+                _run_clang_format(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
 
                 with open(temp_file_path, "r") as f:
                     minified_output: str = f.read()
@@ -108,7 +126,7 @@ class CppPreprocessor(BasePreprocessor):
                 with open(temp_file_path, "w") as f:
                     f.write(processed_content)
 
-                subprocess.run(['clang-format', '-i', temp_file_path])
+                _run_clang_format(['clang-format', '-i', temp_file_path])
 
                 with open(temp_file_path, "r") as f:
                     final_output: str = f.read()
@@ -216,7 +234,7 @@ class CppMinifier(BaseMinifier):
                 ColumnLimit: 1000
             }"""
             
-            subprocess.run(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
+            _run_clang_format(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
             
             with open(temp_file_path, "r") as f:
                 minified_output = f.read()

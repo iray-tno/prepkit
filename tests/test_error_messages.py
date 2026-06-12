@@ -1,10 +1,13 @@
 import pytest
 import os
+import subprocess
 from pathlib import Path
+import click
 from click.testing import CliRunner
 
 from main import cli
 from plugins.cpp_plugin import CppPreprocessor
+from plugins.rust_plugin import RustPreprocessor
 
 
 class TestErrorMessages:
@@ -163,6 +166,41 @@ class TestErrorMessages:
             assert "utils.h" in captured.err
             # Should suggest using -I flag
             assert "-I" in captured.err or "include-path" in captured.err
+
+    def test_cpp_formatter_failure_is_reported(self, tmp_path, monkeypatch):
+        """Test that clang-format failures produce a clear error."""
+        main_cpp = tmp_path / "main.cpp"
+        main_cpp.write_text("int main(){return 0;}\n")
+
+        def fake_run(*args, **kwargs):
+            return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="bad style")
+
+        monkeypatch.setattr("plugins.cpp_plugin.subprocess.run", fake_run)
+
+        cpp_preprocessor = CppPreprocessor()
+        with pytest.raises(click.ClickException) as exc_info:
+            cpp_preprocessor.preprocess(str(main_cpp), [])
+
+        message = str(exc_info.value)
+        assert "clang-format failed with exit code 1" in message
+        assert "bad style" in message
+
+    def test_rustfmt_failure_warns_and_returns_unformatted_output(self, monkeypatch, capsys):
+        """Test that optional rustfmt failures are visible but non-fatal."""
+        source = "fn main(){println!(\"hi\");}"
+
+        def fake_run(*args, **kwargs):
+            return subprocess.CompletedProcess(args[0], 1, stdout="", stderr="parse error")
+
+        monkeypatch.setattr("plugins.rust_plugin.subprocess.run", fake_run)
+
+        preprocessor = RustPreprocessor()
+        result = preprocessor._format_with_rustfmt(source)
+
+        captured = capsys.readouterr()
+        assert result == source
+        assert "Warning: rustfmt failed with exit code 1. Using unformatted output." in captured.err
+        assert "parse error" in captured.err
 
 
 class TestStringLiteralProtection:
