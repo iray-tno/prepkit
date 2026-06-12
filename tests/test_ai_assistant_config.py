@@ -18,6 +18,22 @@ def test_second_opinion_requires_at_least_two_assistants(tmp_path, monkeypatch):
     assert not (tmp_path / ".prepkit" / "second-opinion").exists()
 
 
+def test_setup_all_includes_antigravity_not_gemini(tmp_path):
+    """The supported assistant set includes Antigravity CLI and excludes Gemini CLI."""
+    result = CliRunner().invoke(
+        cli,
+        ["ai-config", "setup", "all", "--workspace-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0
+    ai_config_dir = tmp_path / ".prepkit" / "ai-assistants"
+    assert (ai_config_dir / "claude-code.md").exists()
+    assert (ai_config_dir / "github-copilot.md").exists()
+    assert (ai_config_dir / "antigravity-cli.md").exists()
+    assert not (ai_config_dir / "gemini-cli.md").exists()
+    assert (tmp_path / ".prepkit" / "antigravity-cli" / "second-opinion.md").exists()
+
+
 def test_second_opinion_scaffolds_symmetric_scripts(tmp_path, monkeypatch):
     """Each detected assistant gets scripts for the other detected assistants."""
     installed_commands = {"claude": "/usr/bin/claude", "codex": "/usr/bin/codex"}
