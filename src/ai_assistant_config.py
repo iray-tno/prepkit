@@ -5,13 +5,32 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+
+SECOND_OPINION_ASSISTANTS = {
+    "claude-code": {
+        "commands": ["claude"],
+        "label": "Claude Code",
+        "invoke": '{command} -p "$PROMPT" < /dev/null',
+    },
+    "codex": {
+        "commands": ["codex"],
+        "label": "Codex",
+        "invoke": '{command} exec "$PROMPT" < /dev/null',
+    },
+    "antigravity-cli": {
+        "commands": ["antigravity"],
+        "label": "Antigravity",
+        "invoke": '{command} "$PROMPT" < /dev/null',
+    },
+}
+
 @click.group()
 def ai_config():
     """Configure AI coding assistants for optimal PrepKit workflows."""
     pass
 
 @ai_config.command()
-@click.argument('assistant', type=click.Choice(['claude-code', 'github-copilot', 'gemini-cli', 'all']))
+@click.argument('assistant', type=click.Choice(['claude-code', 'github-copilot', 'antigravity-cli', 'all']))
 @click.option('--workspace-dir', type=click.Path(), default='.', help="Target workspace directory (default: current directory)")
 def setup(assistant: str, workspace_dir: str) -> None:
     """Set up AI assistant configuration files in the workspace."""
@@ -21,7 +40,7 @@ def setup(assistant: str, workspace_dir: str) -> None:
     click.echo(f"Setting up {assistant} configuration in {workspace_path}")
     
     if assistant == 'all':
-        assistants_to_setup = ['claude-code', 'github-copilot', 'gemini-cli']
+        assistants_to_setup = ['claude-code', 'github-copilot', 'antigravity-cli']
     else:
         assistants_to_setup = [assistant]
     
@@ -47,8 +66,103 @@ def setup_assistant_config(assistant: str, config_source: Path, workspace_path: 
         setup_copilot_specific(workspace_path)
     elif assistant == 'claude-code':
         setup_claude_code_specific(workspace_path)
-    elif assistant == 'gemini-cli':
-        setup_gemini_specific(workspace_path)
+    elif assistant == 'antigravity-cli':
+        setup_antigravity_specific(workspace_path)
+
+
+def detect_installed_second_opinion_assistants() -> Dict[str, str]:
+    """Return supported assistant names mapped to their detected CLI command."""
+    installed = {}
+    for assistant, config in SECOND_OPINION_ASSISTANTS.items():
+        for command in config["commands"]:
+            resolved = shutil.which(command)
+            if resolved:
+                installed[assistant] = command
+                break
+    return installed
+
+
+def _render_second_opinion_script(target_name: str, target_command: str) -> str:
+    target_config = SECOND_OPINION_ASSISTANTS[target_name]
+    invocation = target_config["invoke"].format(command=target_command)
+    return f'''#!/bin/bash
+set -euo pipefail
+
+if [ "$#" -eq 0 ]; then
+    echo "Usage: $0 <question or review request>" >&2
+    exit 1
+fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+CONTEXT_FILE="$ROOT_DIR/.prepkit/second-opinion/context.md"
+REQUEST="$*"
+
+if [ -f "$CONTEXT_FILE" ]; then
+    CONTEXT="$(cat "$CONTEXT_FILE")"
+else
+    CONTEXT="No shared project context file found."
+fi
+
+PROMPT="$(cat <<EOF
+You are giving an independent second opinion on a PrepKit task.
+
+Shared project context:
+$CONTEXT
+
+Request:
+$REQUEST
+
+Respond with:
+- the strongest technical concern or alternative you see
+- concrete files or commands to inspect next
+- assumptions that should be verified by local tests or measurements
+EOF
+)"
+
+{invocation}
+'''
+
+
+def scaffold_second_opinion(workspace_path: Path, installed: Dict[str, str]) -> None:
+    """Create symmetric second-opinion scripts for the installed assistants."""
+    base_dir = workspace_path / '.prepkit' / 'second-opinion'
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    context_file = base_dir / 'context.md'
+    if not context_file.exists():
+        context_file.write_text('''# PrepKit Second-Opinion Context
+
+Summarize the current task, constraints, rejected ideas, and local verification commands here before asking another assistant for review.
+
+Ground rules:
+- Treat second opinions as proposals, not truth.
+- Verify suggestions with local tests, benchmarks, or targeted code inspection.
+- Prefer concrete file paths, commands, and measurable claims.
+''')
+        click.echo(f"🧭 Created shared context primer: {context_file}")
+
+    for source_name in installed:
+        source_dir = base_dir / source_name
+        source_dir.mkdir(parents=True, exist_ok=True)
+
+        target_names = [name for name in installed if name != source_name]
+        readme_lines = [
+            f"# Second opinions for {SECOND_OPINION_ASSISTANTS[source_name]['label']}",
+            "",
+            "Use these scripts to ask a different installed assistant for an independent review.",
+            "Update `../context.md` first so the consulted assistant has project-specific grounding.",
+            "",
+        ]
+
+        for target_name in target_names:
+            script_name = f"ask-{target_name}.sh"
+            script_file = source_dir / script_name
+            script_file.write_text(_render_second_opinion_script(target_name, installed[target_name]))
+            script_file.chmod(0o755)
+            readme_lines.append(f"- `{script_name}` asks {SECOND_OPINION_ASSISTANTS[target_name]['label']}.")
+
+        (source_dir / "README.md").write_text("\n".join(readme_lines) + "\n")
+        click.echo(f"🔁 Created {len(target_names)} second-opinion script(s) for {source_name}")
 
 def setup_copilot_specific(workspace_path: Path) -> None:
     """Set up GitHub Copilot specific configuration."""
@@ -196,96 +310,25 @@ PrepKit-specific issues:
             f.write(content)
         click.echo(f"📄 Created Claude Code prompt: {filename}")
 
-def setup_gemini_specific(workspace_path: Path) -> None:
-    """Set up Gemini CLI specific configuration."""
-    gemini_dir = workspace_path / '.prepkit' / 'gemini-cli' 
-    gemini_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create shell scripts for common tasks
-    scripts = {
-        'analyze-cp.sh': '''#!/bin/bash
-# Analyze competitive programming code with Gemini
+def setup_antigravity_specific(workspace_path: Path) -> None:
+    """Set up Antigravity CLI specific guidance."""
+    antigravity_dir = workspace_path / '.prepkit' / 'antigravity-cli'
+    antigravity_dir.mkdir(parents=True, exist_ok=True)
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <cpp_file>"
-    exit 1
-fi
+    guide_file = antigravity_dir / 'second-opinion.md'
+    guide_file.write_text('''# Antigravity CLI Second-Opinion Guide
 
-gemini-cli "
-As an expert in competitive programming, analyze this C++ code:
+Use `prepkit ai-config second-opinion` to create scripts that ask other installed assistants for independent review.
 
-$(cat $1)
-
-Please check:
-1. Algorithm correctness and complexity
-2. Edge cases and boundary conditions
-3. Input/output format correctness  
-4. Potential optimization opportunities
-5. PrepKit preprocessing compatibility
-
-Provide specific improvements and explain reasoning.
-"
-''',
-        'optimize-code.sh': '''#!/bin/bash
-# Optimize code for competitive programming
-
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <cpp_file>" 
-    exit 1
-fi
-
-gemini-cli "
-Optimize this C++ competitive programming code for performance:
-
-$(cat $1)
-
-Focus on:
-- Time complexity improvements
-- Memory usage optimization
-- Constant factor optimizations
-- PrepKit constexpr opportunities
-- Code size reduction for minification
-
-Provide optimized version with explanations.
-"
-''',
-        'generate-tests.sh': '''#!/bin/bash
-# Generate test cases with Gemini
-
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <problem_statement_file>"
-    exit 1
-fi
-
-gemini-cli "
-Generate comprehensive test cases for this competitive programming problem:
-
-$(cat $1)
-
-Include:
-- Sample input/output from problem  
-- Edge cases (min/max constraints)
-- Corner cases (empty, single elements)
-- Stress test cases (large inputs)
-
-Format each as:
-INPUT:
-[test case]
-EXPECTED OUTPUT:  
-[expected result]
-"
-'''
-    }
-    
-    for script_name, script_content in scripts.items():
-        script_file = gemini_dir / script_name
-        with open(script_file, 'w') as f:
-            f.write(script_content)
-        script_file.chmod(0o755)  # Make executable
-        click.echo(f"🔧 Created Gemini script: {script_name}")
+Before asking for review:
+- update `.prepkit/second-opinion/context.md`
+- include the concrete files, commands, and measurements already checked
+- verify any recommendation with local tests or benchmarks
+''')
+    click.echo(f"📄 Created Antigravity CLI guide: {guide_file}")
 
 @ai_config.command()
-@click.option('--assistant', type=click.Choice(['claude-code', 'github-copilot', 'gemini-cli']))
+@click.option('--assistant', type=click.Choice(['claude-code', 'github-copilot', 'antigravity-cli']))
 def status(assistant: Optional[str]) -> None:
     """Show status of AI assistant configurations."""
     workspace_path = Path('.').resolve()
@@ -295,7 +338,7 @@ def status(assistant: Optional[str]) -> None:
         click.echo("❌ No AI assistant configurations found. Run 'setup' first.")
         return
     
-    assistants_to_check = [assistant] if assistant else ['claude-code', 'github-copilot', 'gemini-cli']
+    assistants_to_check = [assistant] if assistant else ['claude-code', 'github-copilot', 'antigravity-cli']
     
     for ai_assistant in assistants_to_check:
         config_file = ai_config_dir / f"{ai_assistant}.md"
@@ -305,16 +348,34 @@ def status(assistant: Optional[str]) -> None:
                 vscode_settings = workspace_path / '.vscode' / 'settings.json'
                 if vscode_settings.exists():
                     click.echo(f"   📁 VS Code settings: {vscode_settings}")
-            elif ai_assistant == 'gemini-cli':
-                gemini_dir = workspace_path / '.prepkit' / 'gemini-cli'
-                if gemini_dir.exists():
-                    scripts = list(gemini_dir.glob('*.sh'))
-                    click.echo(f"   🔧 Scripts available: {len(scripts)}")
+            elif ai_assistant == 'antigravity-cli':
+                guide_file = workspace_path / '.prepkit' / 'antigravity-cli' / 'second-opinion.md'
+                if guide_file.exists():
+                    click.echo(f"   📄 Antigravity guide: {guide_file}")
         else:
             click.echo(f"❌ {ai_assistant}: Not configured")
 
+
+@ai_config.command(name="second-opinion")
+@click.option('--workspace-dir', type=click.Path(), default='.', help="Target workspace directory (default: current directory)")
+def second_opinion(workspace_dir: str) -> None:
+    """Scaffold cross-AI second-opinion scripts for installed assistant CLIs."""
+    workspace_path = Path(workspace_dir).resolve()
+    installed = detect_installed_second_opinion_assistants()
+
+    if len(installed) < 2:
+        click.echo("❌ Need at least two supported assistant CLIs installed for second-opinion scaffolding.")
+        supported = ", ".join(SECOND_OPINION_ASSISTANTS.keys())
+        click.echo(f"   Supported assistants: {supported}")
+        return
+
+    detected = ", ".join(installed.keys())
+    click.echo(f"Detected assistant CLIs: {detected}")
+    scaffold_second_opinion(workspace_path, installed)
+    click.echo("✅ Cross-AI second-opinion scaffolding complete!")
+
 @ai_config.command()
-@click.argument('assistant', type=click.Choice(['claude-code', 'github-copilot', 'gemini-cli']))
+@click.argument('assistant', type=click.Choice(['claude-code', 'github-copilot', 'antigravity-cli']))
 def docs(assistant: str) -> None:
     """Open documentation for an AI assistant."""
     workspace_path = Path('.').resolve()
