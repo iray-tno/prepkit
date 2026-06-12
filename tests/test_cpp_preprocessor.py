@@ -40,6 +40,14 @@ def test_cpp_preprocess_includes(cpp_preprocessor, temp_files):
     assert "#include \"header.hpp\"" not in output # Ensure local include is removed
     assert "#include \"constants.hpp\"" not in output # Ensure local include is removed
 
+def test_cpp_preprocess_does_not_create_fixed_temp_file(cpp_preprocessor, temp_files, monkeypatch):
+    monkeypatch.chdir(temp_files)
+
+    main_file = temp_files / "main.cpp"
+    cpp_preprocessor.preprocess(str(main_file), [str(temp_files)])
+
+    assert not (temp_files / "temp_combined.cpp").exists()
+
 def test_cpp_preprocess_comments(cpp_preprocessor, temp_files):
     comments_file = temp_files / "comments_test.cpp"
     output = cpp_preprocessor.preprocess(str(comments_file), [])
@@ -62,6 +70,14 @@ def test_cpp_minify(cpp_minifier, temp_files):
     assert "/*" not in output               # Multi-line comments removed
     assert "*/" not in output               # Multi-line comments removed
     # Note: Some whitespace and newlines are preserved for compilation compatibility
+
+def test_cpp_minify_does_not_create_fixed_temp_file(cpp_minifier, temp_files, monkeypatch):
+    monkeypatch.chdir(temp_files)
+
+    minify_file = temp_files / "minify_test.cpp"
+    cpp_minifier.minify(str(minify_file))
+
+    assert not (temp_files / "temp_minify.cpp").exists()
 
 def test_cpp_tunable_params_single(cpp_preprocessor, temp_files):
     """Test single tunable parameter injection."""

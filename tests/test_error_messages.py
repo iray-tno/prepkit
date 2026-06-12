@@ -169,6 +169,7 @@ class TestErrorMessages:
 
     def test_cpp_formatter_failure_is_reported(self, tmp_path, monkeypatch):
         """Test that clang-format failures produce a clear error."""
+        monkeypatch.chdir(tmp_path)
         main_cpp = tmp_path / "main.cpp"
         main_cpp.write_text("int main(){return 0;}\n")
 
@@ -184,6 +185,7 @@ class TestErrorMessages:
         message = str(exc_info.value)
         assert "clang-format failed with exit code 1" in message
         assert "bad style" in message
+        assert not (tmp_path / "temp_combined.cpp").exists()
 
     def test_rustfmt_failure_warns_and_returns_unformatted_output(self, monkeypatch, capsys):
         """Test that optional rustfmt failures are visible but non-fatal."""

@@ -2,6 +2,7 @@ import click
 import os
 import re
 import subprocess
+import tempfile
 from typing import List, Dict, Optional
 from base_interfaces import BasePreprocessor, BaseMinifier
 from preprocessing_utils import StringLiteralProtector, report_circular_dependency_error
@@ -169,10 +170,11 @@ class RustPreprocessor(BasePreprocessor):
 
     def _format_with_rustfmt(self, content: str) -> str:
         """Format Rust source with rustfmt if it is available, else return as-is."""
+        temp_file_path: Optional[str] = None
         try:
-            temp_file_path: str = "temp_combined.rs"
-            with open(temp_file_path, "w") as f:
-                f.write(content)
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".rs", delete=False) as temp_file:
+                temp_file.write(content)
+                temp_file_path = temp_file.name
 
             result = subprocess.run(
                 ['rustfmt', temp_file_path],
@@ -190,12 +192,14 @@ class RustPreprocessor(BasePreprocessor):
                     message = f"{message}\n{details}"
                 click.echo(message, err=True)
 
-            os.remove(temp_file_path)
         except FileNotFoundError:
             # rustfmt not available, use unformatted output
             click.echo("Warning: rustfmt not found. Using unformatted output.", err=True)
         except subprocess.SubprocessError as e:
             click.echo(f"Warning: rustfmt failed: {e}. Using unformatted output.", err=True)
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
 
         return content
 

@@ -73,8 +73,9 @@ class TestRustPreprocessorBasic:
         # Should not crash, just return empty content
         assert result == "\n" or result == ""
 
-    def test_single_file_no_modules(self, tmp_path):
+    def test_single_file_no_modules(self, tmp_path, monkeypatch):
         """Test preprocessing a single file with no mod declarations."""
+        monkeypatch.chdir(tmp_path)
         main_rs = tmp_path / "main.rs"
         main_rs.write_text("""
 fn main() {
@@ -87,6 +88,7 @@ fn main() {
 
         assert "fn main()" in result
         assert 'println!("Hello, World!")' in result
+        assert not (tmp_path / "temp_combined.rs").exists()
 
     def test_include_paths_resolution(self, tmp_path):
         """Test module resolution using include_paths parameter."""

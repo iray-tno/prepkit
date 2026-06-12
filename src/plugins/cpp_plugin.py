@@ -3,6 +3,7 @@ import os
 import re
 from collections import defaultdict
 import subprocess
+import tempfile
 import yaml
 from typing import List, Tuple, Dict, Set, Any
 from base_interfaces import BasePreprocessor, BaseMinifier
@@ -77,61 +78,64 @@ class CppPreprocessor(BasePreprocessor):
                     source_content = include_regex.sub("", source_content)
                     combined_content += source_content
 
-            temp_file_path: str = "temp_combined.cpp"
-            with open(temp_file_path, "w") as f:
-                f.write(combined_content)
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as temp_file:
+                temp_file.write(combined_content)
+                temp_file_path: str = temp_file.name
 
-            # First clang-format pass for initial formatting
-            _run_clang_format(['clang-format', '-i', temp_file_path])
-
-            with open(temp_file_path, "r") as f:
-                processed_content: str = f.read()
-
-            # Inject tunable parameters (before removing comments, as we need // @tune markers)
-            if defines:
-                processed_content = self._inject_tunable_params(processed_content, defines)
-
-            # Remove comments using regex
-            processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
-            processed_content = re.sub(r'/\*.*?\*/', '', processed_content, flags=re.DOTALL)  # Multi-line comments
-
-            # Check for prepkit_config.yaml for minification setting
-            config_file_path: str = os.path.join(os.getcwd(), "prepkit_config.yaml")
-            minify_output: bool = False
-            if os.path.exists(config_file_path):
-                try:
-                    with open(config_file_path, 'r') as f:
-                        config: Dict[str, Any] = yaml.safe_load(f)
-                        minify_output = config.get("cpp_preprocess", {}).get("minify_output", False)
-                except yaml.YAMLError as e:
-                    click.echo(f"Warning: Error reading prepkit_config.yaml: {e}. Using default settings.", err=True)
-
-            if minify_output:
-                # Aggressive clang-format style for minification
-                minify_style: str = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
-
-                # Final clang-format pass with minification style
-                with open(temp_file_path, "w") as f:
-                    f.write(processed_content)
-
-                _run_clang_format(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
-
-                with open(temp_file_path, "r") as f:
-                    minified_output: str = f.read()
-                minified_output = re.sub(r'\s+', '', minified_output) # Remove all whitespace
-                minified_output = re.sub(r'\n', '', minified_output) # Remove all newlines
-                final_output: str = minified_output
-            else:
-                # Final clang-format pass with default style
-                with open(temp_file_path, "w") as f:
-                    f.write(processed_content)
-
+            try:
+                # First clang-format pass for initial formatting
                 _run_clang_format(['clang-format', '-i', temp_file_path])
 
                 with open(temp_file_path, "r") as f:
-                    final_output: str = f.read()
+                    processed_content: str = f.read()
 
-            os.remove(temp_file_path)
+                # Inject tunable parameters (before removing comments, as we need // @tune markers)
+                if defines:
+                    processed_content = self._inject_tunable_params(processed_content, defines)
+
+                # Remove comments using regex
+                processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
+                processed_content = re.sub(r'/\*.*?\*/', '', processed_content, flags=re.DOTALL)  # Multi-line comments
+
+                # Check for prepkit_config.yaml for minification setting
+                config_file_path: str = os.path.join(os.getcwd(), "prepkit_config.yaml")
+                minify_output: bool = False
+                if os.path.exists(config_file_path):
+                    try:
+                        with open(config_file_path, 'r') as f:
+                            config: Dict[str, Any] = yaml.safe_load(f)
+                            minify_output = config.get("cpp_preprocess", {}).get("minify_output", False)
+                    except yaml.YAMLError as e:
+                        click.echo(f"Warning: Error reading prepkit_config.yaml: {e}. Using default settings.", err=True)
+
+                if minify_output:
+                    # Aggressive clang-format style for minification
+                    minify_style: str = "{IndentWidth: 0, BreakBeforeBraces: Attach, SpaceAfterCStyleCast: false, SpacesInParentheses: false, CompactNamespaces: true, AllowShortBlocksOnASingleLine: Always, AllowShortFunctionsOnASingleLine: All}"
+
+                    # Final clang-format pass with minification style
+                    with open(temp_file_path, "w") as f:
+                        f.write(processed_content)
+
+                    _run_clang_format(['clang-format', '-i', '-style=' + minify_style, temp_file_path])
+
+                    with open(temp_file_path, "r") as f:
+                        minified_output: str = f.read()
+                    minified_output = re.sub(r'\s+', '', minified_output) # Remove all whitespace
+                    minified_output = re.sub(r'\n', '', minified_output) # Remove all newlines
+                    final_output: str = minified_output
+                else:
+                    # Final clang-format pass with default style
+                    with open(temp_file_path, "w") as f:
+                        f.write(processed_content)
+
+                    _run_clang_format(['clang-format', '-i', temp_file_path])
+
+                    with open(temp_file_path, "r") as f:
+                        final_output: str = f.read()
+            finally:
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+
             return final_output
         else:
             # Report circular dependency error
@@ -214,10 +218,9 @@ class CppMinifier(BaseMinifier):
         with open(file_path, 'r') as f:
             content = f.read()
         
-        # Create temporary file
-        temp_file_path = "temp_minify.cpp"
-        with open(temp_file_path, "w") as f:
-            f.write(content)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as temp_file:
+            temp_file.write(content)
+            temp_file_path = temp_file.name
         
         try:
             # Use clang-format with aggressive minification style
