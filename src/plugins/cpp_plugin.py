@@ -27,6 +27,83 @@ def _run_clang_format(command: List[str]) -> None:
         raise click.ClickException(message)
 
 
+def _read_cpp_raw_string(content: str, start: int) -> Tuple[str, int] | None:
+    """Read a C++ raw string literal starting at or near start, if present."""
+    for prefix in ("u8R", "LR", "uR", "UR", "R"):
+        if not content.startswith(prefix + '"', start):
+            continue
+
+        delimiter_start = start + len(prefix) + 1
+        paren_index = content.find("(", delimiter_start)
+        if paren_index == -1:
+            return None
+
+        delimiter = content[delimiter_start:paren_index]
+        terminator = ")" + delimiter + '"'
+        terminator_index = content.find(terminator, paren_index + 1)
+        if terminator_index == -1:
+            return content[start:], len(content)
+
+        end = terminator_index + len(terminator)
+        return content[start:end], end
+
+    return None
+
+
+def _strip_cpp_comments(content: str) -> str:
+    """Remove C++ comments while preserving string, char, and raw string literals."""
+    result: List[str] = []
+    i = 0
+
+    while i < len(content):
+        raw_string = _read_cpp_raw_string(content, i)
+        if raw_string is not None:
+            literal, i = raw_string
+            result.append(literal)
+            continue
+
+        current = content[i]
+        next_char = content[i + 1] if i + 1 < len(content) else ""
+
+        if current in {'"', "'"}:
+            quote = current
+            literal_start = i
+            i += 1
+            while i < len(content):
+                if content[i] == "\\":
+                    i += 2
+                    continue
+                if content[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            result.append(content[literal_start:i])
+            continue
+
+        if current == "/" and next_char == "/":
+            i += 2
+            while i < len(content) and content[i] != "\n":
+                i += 1
+            if i < len(content):
+                result.append("\n")
+                i += 1
+            continue
+
+        if current == "/" and next_char == "*":
+            i += 2
+            while i + 1 < len(content) and not (content[i] == "*" and content[i + 1] == "/"):
+                if content[i] == "\n":
+                    result.append("\n")
+                i += 1
+            i = i + 2 if i + 1 < len(content) else len(content)
+            continue
+
+        result.append(current)
+        i += 1
+
+    return "".join(result)
+
+
 class CppPreprocessor(BasePreprocessor):
     def preprocess(self, file_path: str, include_paths: List[str], defines: Dict[str, str] = None) -> str:
         """
@@ -93,9 +170,7 @@ class CppPreprocessor(BasePreprocessor):
                 if defines:
                     processed_content = self._inject_tunable_params(processed_content, defines)
 
-                # Remove comments using regex
-                processed_content = re.sub(r'//.*\n', '\n', processed_content)  # Single-line comments
-                processed_content = re.sub(r'/\*.*?\*/', '', processed_content, flags=re.DOTALL)  # Multi-line comments
+                processed_content = _strip_cpp_comments(processed_content)
 
                 # Check for prepkit_config.yaml for minification setting
                 config_file_path: str = os.path.join(os.getcwd(), "prepkit_config.yaml")
@@ -242,11 +317,7 @@ class CppMinifier(BaseMinifier):
             with open(temp_file_path, "r") as f:
                 minified_output = f.read()
             
-            # Remove comments using regex (basic approach)
-            # Remove single-line comments
-            minified_output = re.sub(r'//.*$', '', minified_output, flags=re.MULTILINE)
-            # Remove multi-line comments
-            minified_output = re.sub(r'/\*.*?\*/', '', minified_output, flags=re.DOTALL)
+            minified_output = _strip_cpp_comments(minified_output)
             
             # Moderate minification that preserves compilation compatibility
             # Remove extra whitespace but keep necessary structure
