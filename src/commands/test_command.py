@@ -2,6 +2,7 @@
 import click
 import concurrent.futures
 import json
+import statistics
 import tempfile
 import sys
 import os
@@ -53,6 +54,7 @@ def single_cmd(file, input_file, expected_file, preprocess, include_paths, rust)
 @click.argument('cases_dir', type=click.Path(exists=True, file_okay=False, resolve_path=True))
 @click.option('--pattern', default='*.in', show_default=True, help='Input filename glob inside cases_dir')
 @click.option('-j', '--workers', default=1, show_default=True, type=click.IntRange(min=1), help='Parallel case worker count')
+@click.option('--runs', default=1, show_default=True, type=click.IntRange(min=1), help='Runs per case for noise-aware averaging')
 @click.option('--timeout', type=float, help='Per-case timeout in seconds (defaults to prepkit_config.yaml test.timeout or 5)')
 @click.option('--preprocess', is_flag=True, help='Preprocess the file before compiling')
 @click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True), help='Include paths for preprocessing')
@@ -61,7 +63,7 @@ def single_cmd(file, input_file, expected_file, preprocess, include_paths, rust)
 @click.option('--update-best-known', is_flag=True, help='Update --best-known with improved numeric outputs from this run')
 @click.option('--score-mode', type=click.Choice(['min', 'max']), default='min', show_default=True, help='Whether lower or higher numeric outputs are better')
 @click.option('--relative-scale', type=float, default=1.0, show_default=True, help='Per-case relative score scale')
-def suite_cmd(file, cases_dir, pattern, workers, timeout, preprocess, include_paths, rust, best_known_file, update_best_known, score_mode, relative_scale):
+def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, include_paths, rust, best_known_file, update_best_known, score_mode, relative_scale):
     """Compile once and run an exact-match test suite over *.in/*.out cases."""
     if update_best_known and not best_known_file:
         click.echo("❌ --update-best-known requires --best-known", err=True)
@@ -90,27 +92,36 @@ def suite_cmd(file, cases_dir, pattern, workers, timeout, preprocess, include_pa
         source_file = _prepare_source_for_compile(file, preprocess, include_paths, is_rust, config)
         executable = _compile_for_suite(file, source_file, is_rust, config)
 
-        click.echo(f"Running {len(cases)} case(s) with {workers} worker(s)...")
-        results = []
+        if runs == 1:
+            click.echo(f"Running {len(cases)} case(s) with {workers} worker(s)...")
+        else:
+            click.echo(f"Running {len(cases)} case(s) x {runs} run(s) with {workers} worker(s)...")
+
+        raw_results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
                 executor.submit(_run_suite_case, executable, input_file, expected_file, timeout)
                 for input_file, expected_file in cases
+                for _ in range(runs)
             ]
             for future in concurrent.futures.as_completed(futures):
-                results.append(future.result())
+                raw_results.append(future.result())
 
+        results = _aggregate_suite_results(raw_results, runs) if runs > 1 else raw_results
         results.sort(key=lambda result: result["case"])
         passed = sum(1 for result in results if result["passed"])
 
         click.echo("\n--- Suite Results ---")
         for result in results:
             status = "PASS" if result["passed"] else "FAIL"
-            click.echo(f"{status} {result['case']} ({result['runtime']:.3f}s)")
+            click.echo(_format_suite_result_line(status, result, runs))
             if not result["passed"] and result["error"]:
                 click.echo(f"  {result['error']}")
 
         click.echo(f"\nSummary: {passed}/{len(results)} passed")
+        if runs > 1:
+            _report_noise_summary(results, runs)
+
         if best_known_file:
             best_known = _load_best_known(best_known_file)
             _report_relative_scores(results, best_known, score_mode, relative_scale)
@@ -243,6 +254,68 @@ def _run_suite_case(executable, input_file, expected_file, timeout):
         "error": error,
         "output": run_result.stdout,
     }
+
+
+def _aggregate_suite_results(raw_results, runs):
+    grouped = {}
+    for result in raw_results:
+        grouped.setdefault(result["case"], []).append(result)
+
+    aggregate_results = []
+    for case, case_results in grouped.items():
+        numeric_outputs = []
+        for result in case_results:
+            try:
+                numeric_outputs.append(_parse_numeric_output(result["output"]))
+            except ValueError:
+                pass
+
+        mean_output = statistics.mean(numeric_outputs) if numeric_outputs else None
+        output = f"{mean_output}\n" if mean_output is not None else ""
+        failed_runs = [result for result in case_results if not result["passed"]]
+        aggregate_results.append({
+            "case": case,
+            "passed": not failed_runs and len(case_results) == runs,
+            "runtime": statistics.mean(result["runtime"] for result in case_results),
+            "error": _format_aggregate_error(failed_runs, len(case_results), runs),
+            "output": output,
+            "runs": len(case_results),
+            "passed_runs": len(case_results) - len(failed_runs),
+            "score_mean": mean_output,
+            "score_stdev": statistics.stdev(numeric_outputs) if len(numeric_outputs) > 1 else 0.0,
+            "numeric_runs": len(numeric_outputs),
+        })
+    return aggregate_results
+
+
+def _format_aggregate_error(failed_runs, actual_runs, expected_runs):
+    if actual_runs != expected_runs:
+        return f"expected {expected_runs} run(s), got {actual_runs}"
+    if not failed_runs:
+        return ""
+    first_error = failed_runs[0]["error"]
+    return f"{len(failed_runs)}/{actual_runs} run(s) failed: {first_error}"
+
+
+def _format_suite_result_line(status, result, runs):
+    if runs == 1:
+        return f"{status} {result['case']} ({result['runtime']:.3f}s)"
+    return (
+        f"{status} {result['case']} "
+        f"({result['passed_runs']}/{result['runs']} runs, avg {result['runtime']:.3f}s)"
+    )
+
+
+def _report_noise_summary(results, runs):
+    click.echo("\n--- Noise Summary ---")
+    for result in results:
+        if result["numeric_runs"] == runs:
+            click.echo(
+                f"{result['case']}: mean={_format_score(result['score_mean'])} "
+                f"stdev={result['score_stdev']:.6f}"
+            )
+        else:
+            click.echo(f"{result['case']}: N/A ({result['numeric_runs']}/{runs} numeric run(s))")
 
 
 def _load_best_known(best_known_file):
