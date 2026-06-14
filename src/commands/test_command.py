@@ -1,6 +1,7 @@
 """Test command for competitive programming."""
 import click
 import concurrent.futures
+from dataclasses import dataclass
 import json
 import statistics
 import tempfile
@@ -12,6 +13,39 @@ import time
 from config import load_config
 from plugins.cpp_plugin import CppPreprocessor
 from plugins.rust_plugin import RustPreprocessor
+
+
+@dataclass
+class SuiteRunResult:
+    case: str
+    passed: bool
+    runtime: float
+    error: str
+    output: str
+
+
+@dataclass
+class AggregatedSuiteResult:
+    case: str
+    passed: bool
+    runtime: float
+    error: str
+    output: str
+    runs: int
+    passed_runs: int
+    score_mean: float | None
+    score_stdev: float
+    numeric_runs: int
+
+
+@dataclass
+class PairResult:
+    case: str
+    valid: bool
+    error: str
+    score_a: float | None
+    score_b: float | None
+    diff: float | None
 
 
 @click.command(name="test", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
@@ -115,15 +149,15 @@ def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, incl
                 raw_results.append(future.result())
 
         results = _aggregate_suite_results(raw_results, runs) if runs > 1 else raw_results
-        results.sort(key=lambda result: result["case"])
-        passed = sum(1 for result in results if result["passed"])
+        results.sort(key=lambda result: result.case)
+        passed = sum(1 for result in results if result.passed)
 
         click.echo("\n--- Suite Results ---")
         for result in results:
-            status = "PASS" if result["passed"] else "FAIL"
+            status = "PASS" if result.passed else "FAIL"
             click.echo(_format_suite_result_line(status, result, runs))
-            if not result["passed"] and result["error"]:
-                click.echo(f"  {result['error']}")
+            if not result.passed and result.error:
+                click.echo(f"  {result.error}")
 
         click.echo(f"\nSummary: {passed}/{len(results)} passed")
         if runs > 1:
@@ -192,7 +226,7 @@ def suite_compare_cmd(file_a, file_b, cases_dir, pattern, workers, runs, timeout
                 pair_results.append(future.result())
 
         _report_compare_results(pair_results, score_mode)
-        if any(not result["valid"] for result in pair_results):
+        if any(not result.valid for result in pair_results):
             sys.exit(1)
     finally:
         for source_file in (source_a, source_b):
@@ -242,7 +276,7 @@ def suite_noise_floor_cmd(file, cases_dir, pattern, workers, runs, timeout, prep
                 pair_results.append(future.result())
 
         _report_noise_floor_results(pair_results)
-        if any(not result["valid"] for result in pair_results):
+        if any(not result.valid for result in pair_results):
             sys.exit(1)
     finally:
         if preprocess and source_file and os.path.exists(source_file):
@@ -352,32 +386,32 @@ def _run_suite_case(executable, input_file, expected_file, timeout):
         )
         runtime = time.perf_counter() - started
     except subprocess.TimeoutExpired:
-        return {
-            "case": os.path.basename(input_file),
-            "passed": False,
-            "runtime": timeout,
-            "error": f"timed out after {timeout}s",
-            "output": "",
-        }
+        return SuiteRunResult(
+            case=os.path.basename(input_file),
+            passed=False,
+            runtime=timeout,
+            error=f"timed out after {timeout}s",
+            output="",
+        )
 
     if run_result.returncode != 0:
-        return {
-            "case": os.path.basename(input_file),
-            "passed": False,
-            "runtime": runtime,
-            "error": f"runtime error: {run_result.stderr.strip()}",
-            "output": run_result.stdout,
-        }
+        return SuiteRunResult(
+            case=os.path.basename(input_file),
+            passed=False,
+            runtime=runtime,
+            error=f"runtime error: {run_result.stderr.strip()}",
+            output=run_result.stdout,
+        )
 
     passed = run_result.stdout.strip() == expected_output.strip()
     error = "" if passed else "output differs from expected"
-    return {
-        "case": os.path.basename(input_file),
-        "passed": passed,
-        "runtime": runtime,
-        "error": error,
-        "output": run_result.stdout,
-    }
+    return SuiteRunResult(
+        case=os.path.basename(input_file),
+        passed=passed,
+        runtime=runtime,
+        error=error,
+        output=run_result.stdout,
+    )
 
 
 def _run_compare_pair(executable_a, executable_b, input_file, expected_file, timeout):
@@ -386,43 +420,43 @@ def _run_compare_pair(executable_a, executable_b, input_file, expected_file, tim
     case = os.path.basename(input_file)
 
     try:
-        score_a = _parse_numeric_output(result_a["output"])
-        score_b = _parse_numeric_output(result_b["output"])
+        score_a = _parse_numeric_output(result_a.output)
+        score_b = _parse_numeric_output(result_b.output)
     except ValueError as exc:
-        return {
-            "case": case,
-            "valid": False,
-            "error": str(exc),
-            "score_a": None,
-            "score_b": None,
-            "diff": None,
-        }
+        return PairResult(
+            case=case,
+            valid=False,
+            error=str(exc),
+            score_a=None,
+            score_b=None,
+            diff=None,
+        )
 
-    return {
-        "case": case,
-        "valid": True,
-        "error": "",
-        "score_a": score_a,
-        "score_b": score_b,
-        "diff": score_a - score_b,
-    }
+    return PairResult(
+        case=case,
+        valid=True,
+        error="",
+        score_a=score_a,
+        score_b=score_b,
+        diff=score_a - score_b,
+    )
 
 
 def _report_compare_results(pair_results, score_mode):
-    pair_results.sort(key=lambda result: result["case"])
-    valid_results = [result for result in pair_results if result["valid"]]
+    pair_results.sort(key=lambda result: result.case)
+    valid_results = [result for result in pair_results if result.valid]
 
     click.echo("\n--- Paired A/B Results ---")
     for result in pair_results:
-        if not result["valid"]:
-            click.echo(f"{result['case']}: N/A ({result['error']})")
+        if not result.valid:
+            click.echo(f"{result.case}: N/A ({result.error})")
             continue
-        winner = _compare_winner(result["score_a"], result["score_b"], score_mode)
+        winner = _compare_winner(result.score_a, result.score_b, score_mode)
         click.echo(
-            f"{result['case']}: "
-            f"A={_format_score(result['score_a'])} "
-            f"B={_format_score(result['score_b'])} "
-            f"diff(A-B)={result['diff']:.6f} "
+            f"{result.case}: "
+            f"A={_format_score(result.score_a)} "
+            f"B={_format_score(result.score_b)} "
+            f"diff(A-B)={result.diff:.6f} "
             f"winner={winner}"
         )
 
@@ -430,9 +464,9 @@ def _report_compare_results(pair_results, score_mode):
         click.echo("\nSummary: 0 valid paired run(s)")
         return
 
-    diffs = [result["diff"] for result in valid_results]
-    a_wins = sum(1 for result in valid_results if _compare_winner(result["score_a"], result["score_b"], score_mode) == "A")
-    b_wins = sum(1 for result in valid_results if _compare_winner(result["score_a"], result["score_b"], score_mode) == "B")
+    diffs = [result.diff for result in valid_results]
+    a_wins = sum(1 for result in valid_results if _compare_winner(result.score_a, result.score_b, score_mode) == "A")
+    b_wins = sum(1 for result in valid_results if _compare_winner(result.score_a, result.score_b, score_mode) == "B")
     ties = len(valid_results) - a_wins - b_wins
 
     click.echo(
@@ -449,26 +483,26 @@ def _report_compare_results(pair_results, score_mode):
 
 
 def _report_noise_floor_results(pair_results):
-    pair_results.sort(key=lambda result: result["case"])
-    valid_results = [result for result in pair_results if result["valid"]]
+    pair_results.sort(key=lambda result: result.case)
+    valid_results = [result for result in pair_results if result.valid]
 
     click.echo("\n--- Noise Floor ---")
     for result in pair_results:
-        if not result["valid"]:
-            click.echo(f"{result['case']}: N/A ({result['error']})")
+        if not result.valid:
+            click.echo(f"{result.case}: N/A ({result.error})")
             continue
         click.echo(
-            f"{result['case']}: "
-            f"run1={_format_score(result['score_a'])} "
-            f"run2={_format_score(result['score_b'])} "
-            f"abs-diff={abs(result['diff']):.6f}"
+            f"{result.case}: "
+            f"run1={_format_score(result.score_a)} "
+            f"run2={_format_score(result.score_b)} "
+            f"abs-diff={abs(result.diff):.6f}"
         )
 
     if not valid_results:
         click.echo("\nSummary: 0 valid self-pair(s)")
         return
 
-    diffs = [result["diff"] for result in valid_results]
+    diffs = [result.diff for result in valid_results]
     abs_diffs = [abs(diff) for diff in diffs]
     click.echo(f"\nSummary: {len(valid_results)} valid self-pair(s)")
     click.echo(f"Mean absolute diff: {statistics.mean(abs_diffs):.6f}")
@@ -490,32 +524,32 @@ def _compare_winner(score_a, score_b, score_mode):
 def _aggregate_suite_results(raw_results, runs):
     grouped = {}
     for result in raw_results:
-        grouped.setdefault(result["case"], []).append(result)
+        grouped.setdefault(result.case, []).append(result)
 
     aggregate_results = []
     for case, case_results in grouped.items():
         numeric_outputs = []
         for result in case_results:
             try:
-                numeric_outputs.append(_parse_numeric_output(result["output"]))
+                numeric_outputs.append(_parse_numeric_output(result.output))
             except ValueError:
                 pass
 
         mean_output = statistics.mean(numeric_outputs) if numeric_outputs else None
         output = f"{mean_output}\n" if mean_output is not None else ""
-        failed_runs = [result for result in case_results if not result["passed"]]
-        aggregate_results.append({
-            "case": case,
-            "passed": not failed_runs and len(case_results) == runs,
-            "runtime": statistics.mean(result["runtime"] for result in case_results),
-            "error": _format_aggregate_error(failed_runs, len(case_results), runs),
-            "output": output,
-            "runs": len(case_results),
-            "passed_runs": len(case_results) - len(failed_runs),
-            "score_mean": mean_output,
-            "score_stdev": statistics.stdev(numeric_outputs) if len(numeric_outputs) > 1 else 0.0,
-            "numeric_runs": len(numeric_outputs),
-        })
+        failed_runs = [result for result in case_results if not result.passed]
+        aggregate_results.append(AggregatedSuiteResult(
+            case=case,
+            passed=not failed_runs and len(case_results) == runs,
+            runtime=statistics.mean(result.runtime for result in case_results),
+            error=_format_aggregate_error(failed_runs, len(case_results), runs),
+            output=output,
+            runs=len(case_results),
+            passed_runs=len(case_results) - len(failed_runs),
+            score_mean=mean_output,
+            score_stdev=statistics.stdev(numeric_outputs) if len(numeric_outputs) > 1 else 0.0,
+            numeric_runs=len(numeric_outputs),
+        ))
     return aggregate_results
 
 
@@ -524,29 +558,29 @@ def _format_aggregate_error(failed_runs, actual_runs, expected_runs):
         return f"expected {expected_runs} run(s), got {actual_runs}"
     if not failed_runs:
         return ""
-    first_error = failed_runs[0]["error"]
+    first_error = failed_runs[0].error
     return f"{len(failed_runs)}/{actual_runs} run(s) failed: {first_error}"
 
 
 def _format_suite_result_line(status, result, runs):
     if runs == 1:
-        return f"{status} {result['case']} ({result['runtime']:.3f}s)"
+        return f"{status} {result.case} ({result.runtime:.3f}s)"
     return (
-        f"{status} {result['case']} "
-        f"({result['passed_runs']}/{result['runs']} runs, avg {result['runtime']:.3f}s)"
+        f"{status} {result.case} "
+        f"({result.passed_runs}/{result.runs} runs, avg {result.runtime:.3f}s)"
     )
 
 
 def _report_noise_summary(results, runs):
     click.echo("\n--- Noise Summary ---")
     for result in results:
-        if result["numeric_runs"] == runs:
+        if result.numeric_runs == runs:
             click.echo(
-                f"{result['case']}: mean={_format_score(result['score_mean'])} "
-                f"stdev={result['score_stdev']:.6f}"
+                f"{result.case}: mean={_format_score(result.score_mean)} "
+                f"stdev={result.score_stdev:.6f}"
             )
         else:
-            click.echo(f"{result['case']}: N/A ({result['numeric_runs']}/{runs} numeric run(s))")
+            click.echo(f"{result.case}: N/A ({result.numeric_runs}/{runs} numeric run(s))")
 
 
 def _load_best_known(best_known_file):
@@ -574,9 +608,9 @@ def _report_relative_scores(results, best_known, score_mode, relative_scale, rel
     scored = 0
     scored_cases = []
     for result in results:
-        case = result["case"]
+        case = result.case
         try:
-            your_score = _parse_numeric_output(result["output"])
+            your_score = _parse_numeric_output(result.output)
         except ValueError as exc:
             click.echo(f"{case}: N/A ({exc})")
             continue
@@ -636,13 +670,13 @@ def _update_best_known(results, best_known, score_mode):
     updated = 0
     for result in results:
         try:
-            your_score = _parse_numeric_output(result["output"])
+            your_score = _parse_numeric_output(result.output)
         except ValueError:
             continue
 
-        current_best = best_known.get(result["case"])
+        current_best = best_known.get(result.case)
         if current_best is None or _is_better(your_score, float(current_best), score_mode):
-            best_known[result["case"]] = your_score
+            best_known[result.case] = your_score
             updated += 1
     return updated
 
