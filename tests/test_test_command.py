@@ -300,6 +300,52 @@ int main() {
         assert "Total relative score: 100.000000 / 200.000000" in result.output
 
     @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_runs_multiple_times_for_noise_summary(self, tmp_path):
+        """Test repeated suite runs aggregate numeric outputs before scoring."""
+        test_file = tmp_path / "echo_first.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("10\n")
+        (cases_dir / "001.out").write_text("10\n")
+        best_known = tmp_path / "best.json"
+        best_known.write_text('{"001.in": 5}\n')
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                'test',
+                'suite',
+                str(test_file),
+                str(cases_dir),
+                '--runs',
+                '3',
+                '--best-known',
+                str(best_known),
+                '--relative-scale',
+                '100',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Running 1 case(s) x 3 run(s) with 1 worker(s)..." in result.output
+        assert "PASS 001.in (3/3 runs" in result.output
+        assert "--- Noise Summary ---" in result.output
+        assert "001.in: mean=10 stdev=0.000000" in result.output
+        assert "001.in: your=10 best=5 relative=50.000000" in result.output
+
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
     def test_cpp_suite_updates_best_known(self, tmp_path):
         """Test best-known JSON updates when this run improves numeric values."""
         test_file = tmp_path / "echo_first.cpp"
