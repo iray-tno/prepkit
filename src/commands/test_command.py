@@ -22,6 +22,8 @@ def test(args):
         suite_args = list(args[1:])
         if suite_args and suite_args[0] == "compare":
             suite_compare_cmd.main(args=suite_args[1:], prog_name="test suite compare", standalone_mode=False)
+        elif suite_args and suite_args[0] == "noise-floor":
+            suite_noise_floor_cmd.main(args=suite_args[1:], prog_name="test suite noise-floor", standalone_mode=False)
         else:
             suite_cmd.main(args=suite_args, prog_name="test suite", standalone_mode=False)
     else:
@@ -199,6 +201,54 @@ def suite_compare_cmd(file_a, file_b, cases_dir, pattern, workers, runs, timeout
         for executable in (executable_a, executable_b):
             if executable and os.path.exists(executable):
                 os.remove(executable)
+
+
+@click.command(name="noise-floor")
+@click.argument('file', type=click.Path(exists=True, resolve_path=True))
+@click.argument('cases_dir', type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.option('--pattern', default='*.in', show_default=True, help='Input filename glob inside cases_dir')
+@click.option('-j', '--workers', default=1, show_default=True, type=click.IntRange(min=1), help='Parallel paired worker count')
+@click.option('--runs', default=3, show_default=True, type=click.IntRange(min=1), help='Self-comparison pairs per case')
+@click.option('--timeout', type=float, help='Per-run timeout in seconds (defaults to prepkit_config.yaml test.timeout or 5)')
+@click.option('--preprocess', is_flag=True, help='Preprocess the file before compiling')
+@click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True), help='Include paths for preprocessing')
+@click.option('--rust', is_flag=True, help='Force Rust mode (auto-detected from .rs extension)')
+def suite_noise_floor_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, include_paths, rust):
+    """Measure same-solver run-to-run score variance."""
+    config = load_config()
+    timeout = timeout if timeout is not None else config.get("test", {}).get("timeout", 5)
+    is_rust = _detect_suite_language(file, rust)
+
+    cases = _discover_suite_cases(cases_dir, pattern)
+    if not cases:
+        click.echo(f"❌ No cases found in {cases_dir} matching {pattern} with .out files", err=True)
+        sys.exit(1)
+
+    executable = None
+    source_file = None
+    try:
+        source_file = _prepare_source_for_compile(file, preprocess, include_paths, is_rust, config)
+        executable = _compile_for_suite(file, source_file, is_rust, config)
+
+        click.echo(f"Calibrating {len(cases)} case(s) x {runs} self-pair(s) with {workers} worker(s)...")
+        pair_results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(_run_compare_pair, executable, executable, input_file, expected_file, timeout)
+                for input_file, expected_file in cases
+                for _ in range(runs)
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                pair_results.append(future.result())
+
+        _report_noise_floor_results(pair_results)
+        if any(not result["valid"] for result in pair_results):
+            sys.exit(1)
+    finally:
+        if preprocess and source_file and os.path.exists(source_file):
+            os.remove(source_file)
+        if executable and os.path.exists(executable):
+            os.remove(executable)
 
 
 def _detect_suite_language(file, force_rust):
@@ -396,6 +446,37 @@ def _report_compare_results(pair_results, score_mode):
         click.echo(f"Diff stdev: {statistics.stdev(diffs):.6f}")
     else:
         click.echo("Diff stdev: 0.000000")
+
+
+def _report_noise_floor_results(pair_results):
+    pair_results.sort(key=lambda result: result["case"])
+    valid_results = [result for result in pair_results if result["valid"]]
+
+    click.echo("\n--- Noise Floor ---")
+    for result in pair_results:
+        if not result["valid"]:
+            click.echo(f"{result['case']}: N/A ({result['error']})")
+            continue
+        click.echo(
+            f"{result['case']}: "
+            f"run1={_format_score(result['score_a'])} "
+            f"run2={_format_score(result['score_b'])} "
+            f"abs-diff={abs(result['diff']):.6f}"
+        )
+
+    if not valid_results:
+        click.echo("\nSummary: 0 valid self-pair(s)")
+        return
+
+    diffs = [result["diff"] for result in valid_results]
+    abs_diffs = [abs(diff) for diff in diffs]
+    click.echo(f"\nSummary: {len(valid_results)} valid self-pair(s)")
+    click.echo(f"Mean absolute diff: {statistics.mean(abs_diffs):.6f}")
+    click.echo(f"Max absolute diff: {max(abs_diffs):.6f}")
+    if len(diffs) > 1:
+        click.echo(f"Signed diff stdev: {statistics.stdev(diffs):.6f}")
+    else:
+        click.echo("Signed diff stdev: 0.000000")
 
 
 def _compare_winner(score_a, score_b, score_mode):
