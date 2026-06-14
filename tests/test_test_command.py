@@ -298,6 +298,52 @@ int main() {
         assert "001.in: your=10 best=5 relative=50.000000" in result.output
         assert "002.in: your=20 best=10 relative=50.000000" in result.output
         assert "Total relative score: 100.000000 / 200.000000" in result.output
+        assert "Contest score: 100.000000 / 200.000000 (50.00% of max)" in result.output
+        assert "--- Relative Loss Ranking ---" in result.output
+        assert "001.in: loss=50.000000 point(s)" in result.output
+
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_reports_rounded_contest_score(self, tmp_path):
+        """Test contest-style rounded per-case relative points."""
+        test_file = tmp_path / "echo_first.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("3\n")
+        (cases_dir / "001.out").write_text("3\n")
+        best_known = tmp_path / "best.json"
+        best_known.write_text('{"001.in": 2}\n')
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                'test',
+                'suite',
+                str(test_file),
+                str(cases_dir),
+                '--best-known',
+                str(best_known),
+                '--relative-scale',
+                '100',
+                '--relative-round',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "001.in: your=3 best=2 relative=66.666667" in result.output
+        assert "Contest score: 67 / 100 (67.00% of max, rounded per case)" in result.output
+        assert "001.in: loss=33 point(s)" in result.output
 
     @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
     def test_cpp_suite_runs_multiple_times_for_noise_summary(self, tmp_path):
