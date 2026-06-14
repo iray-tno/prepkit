@@ -67,7 +67,8 @@ def single_cmd(file, input_file, expected_file, preprocess, include_paths, rust)
 @click.option('--update-best-known', is_flag=True, help='Update --best-known with improved numeric outputs from this run')
 @click.option('--score-mode', type=click.Choice(['min', 'max']), default='min', show_default=True, help='Whether lower or higher numeric outputs are better')
 @click.option('--relative-scale', type=float, default=1.0, show_default=True, help='Per-case relative score scale')
-def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, include_paths, rust, best_known_file, update_best_known, score_mode, relative_scale):
+@click.option('--relative-round', is_flag=True, help='Round each relative score to contest-style integer points')
+def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, include_paths, rust, best_known_file, update_best_known, score_mode, relative_scale, relative_round):
     """Compile once and run an exact-match test suite over *.in/*.out cases."""
     if update_best_known and not best_known_file:
         click.echo("❌ --update-best-known requires --best-known", err=True)
@@ -128,7 +129,7 @@ def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, incl
 
         if best_known_file:
             best_known = _load_best_known(best_known_file)
-            _report_relative_scores(results, best_known, score_mode, relative_scale)
+            _report_relative_scores(results, best_known, score_mode, relative_scale, relative_round)
             if update_best_known:
                 updated = _update_best_known(results, best_known, score_mode)
                 _write_best_known(best_known_file, best_known)
@@ -486,10 +487,11 @@ def _write_best_known(best_known_file, best_known):
         f.write("\n")
 
 
-def _report_relative_scores(results, best_known, score_mode, relative_scale):
+def _report_relative_scores(results, best_known, score_mode, relative_scale, relative_round):
     click.echo("\n--- Relative Score ---")
     total = 0.0
     scored = 0
+    scored_cases = []
     for result in results:
         case = result["case"]
         try:
@@ -511,6 +513,14 @@ def _report_relative_scores(results, best_known, score_mode, relative_scale):
 
         total += relative_score
         scored += 1
+        points = round(relative_score) if relative_round else relative_score
+        max_points = round(relative_scale) if relative_round else relative_scale
+        scored_cases.append({
+            "case": case,
+            "points": points,
+            "max_points": max_points,
+            "loss": max(0, max_points - points),
+        })
         click.echo(
             f"{case}: your={_format_score(your_score)} "
             f"best={_format_score(float(best_score))} "
@@ -518,6 +528,27 @@ def _report_relative_scores(results, best_known, score_mode, relative_scale):
         )
 
     click.echo(f"Total relative score: {total:.6f} / {(scored * relative_scale):.6f}")
+    _report_contest_score(scored_cases, relative_round)
+
+
+def _report_contest_score(scored_cases, relative_round):
+    if not scored_cases:
+        return
+
+    total_points = sum(case["points"] for case in scored_cases)
+    max_points = sum(case["max_points"] for case in scored_cases)
+    percent = total_points / max_points * 100 if max_points else 0.0
+    if relative_round:
+        click.echo(f"Contest score: {total_points} / {max_points} ({percent:.2f}% of max, rounded per case)")
+    else:
+        click.echo(f"Contest score: {total_points:.6f} / {max_points:.6f} ({percent:.2f}% of max)")
+
+    click.echo("\n--- Relative Loss Ranking ---")
+    for case in sorted(scored_cases, key=lambda item: item["loss"], reverse=True):
+        if relative_round:
+            click.echo(f"{case['case']}: loss={case['loss']} point(s)")
+        else:
+            click.echo(f"{case['case']}: loss={case['loss']:.6f} point(s)")
 
 
 def _update_best_known(results, best_known, score_mode):
