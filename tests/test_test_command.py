@@ -197,6 +197,63 @@ int main() {
         assert "✓ Compilation successful" in result.output
         assert "C++ still works!" in result.output
 
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_all_cases_pass(self, tmp_path):
+        """Test parallel exact-match suite execution for C++."""
+        test_file = tmp_path / "add.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    int a, b;
+    std::cin >> a >> b;
+    std::cout << a + b << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("1 2\n")
+        (cases_dir / "001.out").write_text("3\n")
+        (cases_dir / "002.in").write_text("10 20\n")
+        (cases_dir / "002.out").write_text("30\n")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ['test', 'suite', str(test_file), str(cases_dir), '--workers', '2'])
+
+        assert result.exit_code == 0
+        assert "Running 2 case(s) with 2 worker(s)..." in result.output
+        assert "PASS 001.in" in result.output
+        assert "PASS 002.in" in result.output
+        assert "Summary: 2/2 passed" in result.output
+
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_reports_failure(self, tmp_path):
+        """Test suite failure reporting for mismatched expected output."""
+        test_file = tmp_path / "constant.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    std::cout << 1 << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "bad.in").write_text("\n")
+        (cases_dir / "bad.out").write_text("2\n")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ['test', 'suite', str(test_file), str(cases_dir)])
+
+        assert result.exit_code == 1
+        assert "FAIL bad.in" in result.output
+        assert "output differs from expected" in result.output
+        assert "Summary: 0/1 passed" in result.output
+
 
 class TestTestCommandErrorHandling:
     """Test error handling for the test command."""
