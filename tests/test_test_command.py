@@ -448,6 +448,48 @@ int main() {
         assert "Mean diff(A-B): -5.000000" in result.output
 
     @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_noise_floor_reports_self_pair_variance(self, tmp_path):
+        """Test same-solver noise-floor calibration for numeric outputs."""
+        test_file = tmp_path / "echo_first.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("10\n")
+        (cases_dir / "001.out").write_text("10\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                'test',
+                'suite',
+                'noise-floor',
+                str(test_file),
+                str(cases_dir),
+                '--runs',
+                '2',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Calibrating 1 case(s) x 2 self-pair(s) with 1 worker(s)..." in result.output
+        assert "--- Noise Floor ---" in result.output
+        assert "001.in: run1=10 run2=10 abs-diff=0.000000" in result.output
+        assert "Summary: 2 valid self-pair(s)" in result.output
+        assert "Mean absolute diff: 0.000000" in result.output
+        assert "Max absolute diff: 0.000000" in result.output
+
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
     def test_cpp_suite_updates_best_known(self, tmp_path):
         """Test best-known JSON updates when this run improves numeric values."""
         test_file = tmp_path / "echo_first.cpp"
