@@ -346,6 +346,62 @@ int main() {
         assert "001.in: your=10 best=5 relative=50.000000" in result.output
 
     @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_compare_reports_paired_wins(self, tmp_path):
+        """Test paired A/B suite comparison for numeric outputs."""
+        file_a = tmp_path / "solver_a.cpp"
+        file_a.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value << std::endl;
+    return 0;
+}
+""")
+        file_b = tmp_path / "solver_b.cpp"
+        file_b.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value + 5 << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("10\n")
+        (cases_dir / "001.out").write_text("10\n")
+        (cases_dir / "002.in").write_text("20\n")
+        (cases_dir / "002.out").write_text("20\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                'test',
+                'suite',
+                'compare',
+                str(file_a),
+                str(file_b),
+                str(cases_dir),
+                '--runs',
+                '2',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Comparing 2 case(s) x 2 paired run(s) with 1 worker(s)..." in result.output
+        assert "--- Paired A/B Results ---" in result.output
+        assert "001.in: A=10 B=15 diff(A-B)=-5.000000 winner=A" in result.output
+        assert "002.in: A=20 B=25 diff(A-B)=-5.000000 winner=A" in result.output
+        assert "Summary: A wins 4/4, B wins 0/4, ties 0/4" in result.output
+        assert "Mean diff(A-B): -5.000000" in result.output
+
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
     def test_cpp_suite_updates_best_known(self, tmp_path):
         """Test best-known JSON updates when this run improves numeric values."""
         test_file = tmp_path / "echo_first.cpp"

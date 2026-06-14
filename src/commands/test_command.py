@@ -19,7 +19,11 @@ from plugins.rust_plugin import RustPreprocessor
 def test(args):
     """Compile/run one case, or use `test suite` for multi-case runs."""
     if args and args[0] == "suite":
-        suite_cmd.main(args=list(args[1:]), prog_name="test suite", standalone_mode=False)
+        suite_args = list(args[1:])
+        if suite_args and suite_args[0] == "compare":
+            suite_compare_cmd.main(args=suite_args[1:], prog_name="test suite compare", standalone_mode=False)
+        else:
+            suite_cmd.main(args=suite_args, prog_name="test suite", standalone_mode=False)
     else:
         single_cmd.main(args=list(args), prog_name="test", standalone_mode=False)
 
@@ -139,6 +143,75 @@ def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, incl
             os.remove(executable)
 
 
+@click.command(name="compare")
+@click.argument('file_a', type=click.Path(exists=True, resolve_path=True))
+@click.argument('file_b', type=click.Path(exists=True, resolve_path=True))
+@click.argument('cases_dir', type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.option('--pattern', default='*.in', show_default=True, help='Input filename glob inside cases_dir')
+@click.option('-j', '--workers', default=1, show_default=True, type=click.IntRange(min=1), help='Parallel paired worker count')
+@click.option('--runs', default=1, show_default=True, type=click.IntRange(min=1), help='Paired runs per case')
+@click.option('--timeout', type=float, help='Per-program timeout in seconds (defaults to prepkit_config.yaml test.timeout or 5)')
+@click.option('--preprocess', is_flag=True, help='Preprocess both files before compiling')
+@click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True), help='Include paths for preprocessing')
+@click.option('--rust', is_flag=True, help='Force Rust mode for both files (auto-detected from .rs extension)')
+@click.option('--score-mode', type=click.Choice(['min', 'max']), default='min', show_default=True, help='Whether lower or higher numeric outputs are better')
+def suite_compare_cmd(file_a, file_b, cases_dir, pattern, workers, runs, timeout, preprocess, include_paths, rust, score_mode):
+    """Compare two programs with paired repeated suite runs."""
+    config = load_config()
+    timeout = timeout if timeout is not None else config.get("test", {}).get("timeout", 5)
+    is_rust_a = _detect_suite_language(file_a, rust)
+    is_rust_b = _detect_suite_language(file_b, rust)
+
+    cases = _discover_suite_cases(cases_dir, pattern)
+    if not cases:
+        click.echo(f"❌ No cases found in {cases_dir} matching {pattern} with .out files", err=True)
+        sys.exit(1)
+
+    executable_a = None
+    executable_b = None
+    source_a = None
+    source_b = None
+    try:
+        source_a = _prepare_source_for_compile(file_a, preprocess, include_paths, is_rust_a, config)
+        source_b = _prepare_source_for_compile(file_b, preprocess, include_paths, is_rust_b, config)
+        executable_a = _compile_for_suite(file_a, source_a, is_rust_a, config)
+        executable_b = _compile_for_suite(file_b, source_b, is_rust_b, config)
+
+        click.echo(f"Comparing {len(cases)} case(s) x {runs} paired run(s) with {workers} worker(s)...")
+        pair_results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(_run_compare_pair, executable_a, executable_b, input_file, expected_file, timeout)
+                for input_file, expected_file in cases
+                for _ in range(runs)
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                pair_results.append(future.result())
+
+        _report_compare_results(pair_results, score_mode)
+        if any(not result["valid"] for result in pair_results):
+            sys.exit(1)
+    finally:
+        for source_file in (source_a, source_b):
+            if preprocess and source_file and os.path.exists(source_file):
+                os.remove(source_file)
+        for executable in (executable_a, executable_b):
+            if executable and os.path.exists(executable):
+                os.remove(executable)
+
+
+def _detect_suite_language(file, force_rust):
+    file_ext = os.path.splitext(file)[1].lower()
+    is_rust = force_rust or file_ext == '.rs'
+    is_cpp = file_ext in ['.cpp', '.cc', '.cxx', '.c++']
+
+    if not is_rust and not is_cpp:
+        click.echo(f"❌ Unsupported file extension: {file_ext}", err=True)
+        click.echo("   Supported: .cpp, .cc, .cxx, .c++, .rs", err=True)
+        sys.exit(1)
+    return is_rust
+
+
 def _discover_suite_cases(cases_dir, pattern):
     input_files = sorted(
         os.path.join(cases_dir, filename)
@@ -254,6 +327,82 @@ def _run_suite_case(executable, input_file, expected_file, timeout):
         "error": error,
         "output": run_result.stdout,
     }
+
+
+def _run_compare_pair(executable_a, executable_b, input_file, expected_file, timeout):
+    result_a = _run_suite_case(executable_a, input_file, expected_file, timeout)
+    result_b = _run_suite_case(executable_b, input_file, expected_file, timeout)
+    case = os.path.basename(input_file)
+
+    try:
+        score_a = _parse_numeric_output(result_a["output"])
+        score_b = _parse_numeric_output(result_b["output"])
+    except ValueError as exc:
+        return {
+            "case": case,
+            "valid": False,
+            "error": str(exc),
+            "score_a": None,
+            "score_b": None,
+            "diff": None,
+        }
+
+    return {
+        "case": case,
+        "valid": True,
+        "error": "",
+        "score_a": score_a,
+        "score_b": score_b,
+        "diff": score_a - score_b,
+    }
+
+
+def _report_compare_results(pair_results, score_mode):
+    pair_results.sort(key=lambda result: result["case"])
+    valid_results = [result for result in pair_results if result["valid"]]
+
+    click.echo("\n--- Paired A/B Results ---")
+    for result in pair_results:
+        if not result["valid"]:
+            click.echo(f"{result['case']}: N/A ({result['error']})")
+            continue
+        winner = _compare_winner(result["score_a"], result["score_b"], score_mode)
+        click.echo(
+            f"{result['case']}: "
+            f"A={_format_score(result['score_a'])} "
+            f"B={_format_score(result['score_b'])} "
+            f"diff(A-B)={result['diff']:.6f} "
+            f"winner={winner}"
+        )
+
+    if not valid_results:
+        click.echo("\nSummary: 0 valid paired run(s)")
+        return
+
+    diffs = [result["diff"] for result in valid_results]
+    a_wins = sum(1 for result in valid_results if _compare_winner(result["score_a"], result["score_b"], score_mode) == "A")
+    b_wins = sum(1 for result in valid_results if _compare_winner(result["score_a"], result["score_b"], score_mode) == "B")
+    ties = len(valid_results) - a_wins - b_wins
+
+    click.echo(
+        "\nSummary: "
+        f"A wins {a_wins}/{len(valid_results)}, "
+        f"B wins {b_wins}/{len(valid_results)}, "
+        f"ties {ties}/{len(valid_results)}"
+    )
+    click.echo(f"Mean diff(A-B): {statistics.mean(diffs):.6f}")
+    if len(diffs) > 1:
+        click.echo(f"Diff stdev: {statistics.stdev(diffs):.6f}")
+    else:
+        click.echo("Diff stdev: 0.000000")
+
+
+def _compare_winner(score_a, score_b, score_mode):
+    if score_a == score_b:
+        return "tie"
+    if score_mode == "min":
+        return "A" if score_a < score_b else "B"
+    return "A" if score_a > score_b else "B"
 
 
 def _aggregate_suite_results(raw_results, runs):
