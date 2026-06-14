@@ -1,6 +1,7 @@
 """Test command for competitive programming."""
 import click
 import concurrent.futures
+import json
 import tempfile
 import sys
 import os
@@ -56,8 +57,16 @@ def single_cmd(file, input_file, expected_file, preprocess, include_paths, rust)
 @click.option('--preprocess', is_flag=True, help='Preprocess the file before compiling')
 @click.option('-I', '--include-path', 'include_paths', multiple=True, type=click.Path(exists=True, file_okay=False, resolve_path=True), help='Include paths for preprocessing')
 @click.option('--rust', is_flag=True, help='Force Rust mode (auto-detected from .rs extension)')
-def suite_cmd(file, cases_dir, pattern, workers, timeout, preprocess, include_paths, rust):
+@click.option('--best-known', 'best_known_file', type=click.Path(dir_okay=False, resolve_path=True), help='JSON file with best-known numeric outputs by case')
+@click.option('--update-best-known', is_flag=True, help='Update --best-known with improved numeric outputs from this run')
+@click.option('--score-mode', type=click.Choice(['min', 'max']), default='min', show_default=True, help='Whether lower or higher numeric outputs are better')
+@click.option('--relative-scale', type=float, default=1.0, show_default=True, help='Per-case relative score scale')
+def suite_cmd(file, cases_dir, pattern, workers, timeout, preprocess, include_paths, rust, best_known_file, update_best_known, score_mode, relative_scale):
     """Compile once and run an exact-match test suite over *.in/*.out cases."""
+    if update_best_known and not best_known_file:
+        click.echo("❌ --update-best-known requires --best-known", err=True)
+        sys.exit(1)
+
     config = load_config()
     timeout = timeout if timeout is not None else config.get("test", {}).get("timeout", 5)
 
@@ -102,6 +111,14 @@ def suite_cmd(file, cases_dir, pattern, workers, timeout, preprocess, include_pa
                 click.echo(f"  {result['error']}")
 
         click.echo(f"\nSummary: {passed}/{len(results)} passed")
+        if best_known_file:
+            best_known = _load_best_known(best_known_file)
+            _report_relative_scores(results, best_known, score_mode, relative_scale)
+            if update_best_known:
+                updated = _update_best_known(results, best_known, score_mode)
+                _write_best_known(best_known_file, best_known)
+                click.echo(f"\nUpdated best-known: {best_known_file} ({updated} case(s) improved)")
+
         if passed != len(results):
             sys.exit(1)
     finally:
@@ -205,6 +222,7 @@ def _run_suite_case(executable, input_file, expected_file, timeout):
             "passed": False,
             "runtime": timeout,
             "error": f"timed out after {timeout}s",
+            "output": "",
         }
 
     if run_result.returncode != 0:
@@ -213,6 +231,7 @@ def _run_suite_case(executable, input_file, expected_file, timeout):
             "passed": False,
             "runtime": runtime,
             "error": f"runtime error: {run_result.stderr.strip()}",
+            "output": run_result.stdout,
         }
 
     passed = run_result.stdout.strip() == expected_output.strip()
@@ -222,7 +241,106 @@ def _run_suite_case(executable, input_file, expected_file, timeout):
         "passed": passed,
         "runtime": runtime,
         "error": error,
+        "output": run_result.stdout,
     }
+
+
+def _load_best_known(best_known_file):
+    if not os.path.exists(best_known_file):
+        return {}
+    with open(best_known_file, 'r') as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise click.ClickException("--best-known must contain a JSON object")
+    return data
+
+
+def _write_best_known(best_known_file, best_known):
+    parent_dir = os.path.dirname(best_known_file)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(best_known_file, 'w') as f:
+        json.dump(best_known, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def _report_relative_scores(results, best_known, score_mode, relative_scale):
+    click.echo("\n--- Relative Score ---")
+    total = 0.0
+    scored = 0
+    for result in results:
+        case = result["case"]
+        try:
+            your_score = _parse_numeric_output(result["output"])
+        except ValueError as exc:
+            click.echo(f"{case}: N/A ({exc})")
+            continue
+
+        best_score = best_known.get(case)
+        if best_score is None:
+            click.echo(f"{case}: N/A (no best-known value)")
+            continue
+
+        try:
+            relative_score = _relative_score(your_score, float(best_score), score_mode, relative_scale)
+        except ValueError as exc:
+            click.echo(f"{case}: N/A ({exc})")
+            continue
+
+        total += relative_score
+        scored += 1
+        click.echo(
+            f"{case}: your={_format_score(your_score)} "
+            f"best={_format_score(float(best_score))} "
+            f"relative={relative_score:.6f}"
+        )
+
+    click.echo(f"Total relative score: {total:.6f} / {(scored * relative_scale):.6f}")
+
+
+def _update_best_known(results, best_known, score_mode):
+    updated = 0
+    for result in results:
+        try:
+            your_score = _parse_numeric_output(result["output"])
+        except ValueError:
+            continue
+
+        current_best = best_known.get(result["case"])
+        if current_best is None or _is_better(your_score, float(current_best), score_mode):
+            best_known[result["case"]] = your_score
+            updated += 1
+    return updated
+
+
+def _parse_numeric_output(output):
+    tokens = output.strip().split()
+    if not tokens:
+        raise ValueError("empty output")
+    try:
+        return float(tokens[0])
+    except ValueError as exc:
+        raise ValueError("first output token is not numeric") from exc
+
+
+def _relative_score(your_score, best_score, score_mode, relative_scale):
+    if your_score <= 0 or best_score <= 0:
+        raise ValueError("relative score requires positive numeric values")
+    if score_mode == "min":
+        return relative_scale * best_score / your_score
+    return relative_scale * your_score / best_score
+
+
+def _is_better(candidate, current_best, score_mode):
+    if score_mode == "min":
+        return candidate < current_best
+    return candidate > current_best
+
+
+def _format_score(score):
+    if score.is_integer():
+        return str(int(score))
+    return f"{score:.6f}"
 
 
 def _test_cpp(file, input_file, expected_file, preprocess, include_paths):

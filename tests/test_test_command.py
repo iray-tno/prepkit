@@ -254,6 +254,93 @@ int main() {
         assert "output differs from expected" in result.output
         assert "Summary: 0/1 passed" in result.output
 
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_reports_relative_score_from_best_known(self, tmp_path):
+        """Test suite relative scoring against best-known values."""
+        test_file = tmp_path / "echo_first.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("10\n")
+        (cases_dir / "001.out").write_text("10\n")
+        (cases_dir / "002.in").write_text("20\n")
+        (cases_dir / "002.out").write_text("20\n")
+        best_known = tmp_path / "best.json"
+        best_known.write_text('{"001.in": 5, "002.in": 10}\n')
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                'test',
+                'suite',
+                str(test_file),
+                str(cases_dir),
+                '--best-known',
+                str(best_known),
+                '--relative-scale',
+                '100',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "--- Relative Score ---" in result.output
+        assert "001.in: your=10 best=5 relative=50.000000" in result.output
+        assert "002.in: your=20 best=10 relative=50.000000" in result.output
+        assert "Total relative score: 100.000000 / 200.000000" in result.output
+
+    @pytest.mark.skipif(os.system("which g++ > /dev/null 2>&1") != 0, reason="g++ not available")
+    def test_cpp_suite_updates_best_known(self, tmp_path):
+        """Test best-known JSON updates when this run improves numeric values."""
+        test_file = tmp_path / "echo_first.cpp"
+        test_file.write_text("""
+#include <iostream>
+
+int main() {
+    int value;
+    std::cin >> value;
+    std::cout << value << std::endl;
+    return 0;
+}
+""")
+
+        cases_dir = tmp_path / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "001.in").write_text("5\n")
+        (cases_dir / "001.out").write_text("5\n")
+        (cases_dir / "002.in").write_text("7\n")
+        (cases_dir / "002.out").write_text("7\n")
+        best_known = tmp_path / "best.json"
+        best_known.write_text('{"001.in": 10}\n')
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                'test',
+                'suite',
+                str(test_file),
+                str(cases_dir),
+                '--best-known',
+                str(best_known),
+                '--update-best-known',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert f"Updated best-known: {best_known} (2 case(s) improved)" in result.output
+        assert best_known.read_text() == '{\n  "001.in": 5.0,\n  "002.in": 7.0\n}\n'
+
 
 class TestTestCommandErrorHandling:
     """Test error handling for the test command."""
