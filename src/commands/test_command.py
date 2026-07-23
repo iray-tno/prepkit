@@ -5,22 +5,26 @@ import tempfile
 import sys
 import os
 import subprocess
-import time
 
 from config import load_config
 from commands.test_scoring import (
-    PairResult,
-    SuiteRunResult,
     aggregate_suite_results,
     format_suite_result_line,
     load_best_known,
-    parse_numeric_output,
     report_compare_results,
     report_noise_floor_results,
     report_noise_summary,
     report_relative_scores,
     update_best_known as update_best_known_scores,
     write_best_known,
+)
+from commands.test_suite import (
+    compile_for_suite,
+    detect_suite_language,
+    discover_suite_cases,
+    prepare_source_for_suite_compile,
+    run_compare_pair,
+    run_suite_case,
 )
 from plugins.cpp_plugin import CppPreprocessor
 from plugins.rust_plugin import RustPreprocessor
@@ -91,16 +95,9 @@ def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, incl
     config = load_config()
     timeout = timeout if timeout is not None else config.get("test", {}).get("timeout", 5)
 
-    file_ext = os.path.splitext(file)[1].lower()
-    is_rust = rust or file_ext == '.rs'
-    is_cpp = file_ext in ['.cpp', '.cc', '.cxx', '.c++']
+    is_rust = detect_suite_language(file, rust)
 
-    if not is_rust and not is_cpp:
-        click.echo(f"❌ Unsupported file extension: {file_ext}", err=True)
-        click.echo("   Supported: .cpp, .cc, .cxx, .c++, .rs", err=True)
-        sys.exit(1)
-
-    cases = _discover_suite_cases(cases_dir, pattern)
+    cases = discover_suite_cases(cases_dir, pattern)
     if not cases:
         click.echo(f"❌ No cases found in {cases_dir} matching {pattern} with .out files", err=True)
         sys.exit(1)
@@ -108,8 +105,8 @@ def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, incl
     executable = None
     source_file = None
     try:
-        source_file = _prepare_source_for_compile(file, preprocess, include_paths, is_rust, config)
-        executable = _compile_for_suite(file, source_file, is_rust, config)
+        source_file = prepare_source_for_suite_compile(file, preprocess, include_paths, is_rust, config)
+        executable = compile_for_suite(file, source_file, is_rust, config)
 
         if runs == 1:
             click.echo(f"Running {len(cases)} case(s) with {workers} worker(s)...")
@@ -119,7 +116,7 @@ def suite_cmd(file, cases_dir, pattern, workers, runs, timeout, preprocess, incl
         raw_results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
-                executor.submit(_run_suite_case, executable, input_file, expected_file, timeout)
+                executor.submit(run_suite_case, executable, input_file, expected_file, timeout)
                 for input_file, expected_file in cases
                 for _ in range(runs)
             ]
@@ -174,10 +171,10 @@ def suite_compare_cmd(file_a, file_b, cases_dir, pattern, workers, runs, timeout
     """Compare two programs with paired repeated suite runs."""
     config = load_config()
     timeout = timeout if timeout is not None else config.get("test", {}).get("timeout", 5)
-    is_rust_a = _detect_suite_language(file_a, rust)
-    is_rust_b = _detect_suite_language(file_b, rust)
+    is_rust_a = detect_suite_language(file_a, rust)
+    is_rust_b = detect_suite_language(file_b, rust)
 
-    cases = _discover_suite_cases(cases_dir, pattern)
+    cases = discover_suite_cases(cases_dir, pattern)
     if not cases:
         click.echo(f"❌ No cases found in {cases_dir} matching {pattern} with .out files", err=True)
         sys.exit(1)
@@ -187,16 +184,16 @@ def suite_compare_cmd(file_a, file_b, cases_dir, pattern, workers, runs, timeout
     source_a = None
     source_b = None
     try:
-        source_a = _prepare_source_for_compile(file_a, preprocess, include_paths, is_rust_a, config)
-        source_b = _prepare_source_for_compile(file_b, preprocess, include_paths, is_rust_b, config)
-        executable_a = _compile_for_suite(file_a, source_a, is_rust_a, config)
-        executable_b = _compile_for_suite(file_b, source_b, is_rust_b, config)
+        source_a = prepare_source_for_suite_compile(file_a, preprocess, include_paths, is_rust_a, config)
+        source_b = prepare_source_for_suite_compile(file_b, preprocess, include_paths, is_rust_b, config)
+        executable_a = compile_for_suite(file_a, source_a, is_rust_a, config)
+        executable_b = compile_for_suite(file_b, source_b, is_rust_b, config)
 
         click.echo(f"Comparing {len(cases)} case(s) x {runs} paired run(s) with {workers} worker(s)...")
         pair_results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
-                executor.submit(_run_compare_pair, executable_a, executable_b, input_file, expected_file, timeout)
+                executor.submit(run_compare_pair, executable_a, executable_b, input_file, expected_file, timeout)
                 for input_file, expected_file in cases
                 for _ in range(runs)
             ]
@@ -229,9 +226,9 @@ def suite_noise_floor_cmd(file, cases_dir, pattern, workers, runs, timeout, prep
     """Measure same-solver run-to-run score variance."""
     config = load_config()
     timeout = timeout if timeout is not None else config.get("test", {}).get("timeout", 5)
-    is_rust = _detect_suite_language(file, rust)
+    is_rust = detect_suite_language(file, rust)
 
-    cases = _discover_suite_cases(cases_dir, pattern)
+    cases = discover_suite_cases(cases_dir, pattern)
     if not cases:
         click.echo(f"❌ No cases found in {cases_dir} matching {pattern} with .out files", err=True)
         sys.exit(1)
@@ -239,14 +236,14 @@ def suite_noise_floor_cmd(file, cases_dir, pattern, workers, runs, timeout, prep
     executable = None
     source_file = None
     try:
-        source_file = _prepare_source_for_compile(file, preprocess, include_paths, is_rust, config)
-        executable = _compile_for_suite(file, source_file, is_rust, config)
+        source_file = prepare_source_for_suite_compile(file, preprocess, include_paths, is_rust, config)
+        executable = compile_for_suite(file, source_file, is_rust, config)
 
         click.echo(f"Calibrating {len(cases)} case(s) x {runs} self-pair(s) with {workers} worker(s)...")
         pair_results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
-                executor.submit(_run_compare_pair, executable, executable, input_file, expected_file, timeout)
+                executor.submit(run_compare_pair, executable, executable, input_file, expected_file, timeout)
                 for input_file, expected_file in cases
                 for _ in range(runs)
             ]
@@ -261,163 +258,6 @@ def suite_noise_floor_cmd(file, cases_dir, pattern, workers, runs, timeout, prep
             os.remove(source_file)
         if executable and os.path.exists(executable):
             os.remove(executable)
-
-
-def _detect_suite_language(file, force_rust):
-    file_ext = os.path.splitext(file)[1].lower()
-    is_rust = force_rust or file_ext == '.rs'
-    is_cpp = file_ext in ['.cpp', '.cc', '.cxx', '.c++']
-
-    if not is_rust and not is_cpp:
-        click.echo(f"❌ Unsupported file extension: {file_ext}", err=True)
-        click.echo("   Supported: .cpp, .cc, .cxx, .c++, .rs", err=True)
-        sys.exit(1)
-    return is_rust
-
-
-def _discover_suite_cases(cases_dir, pattern):
-    input_files = sorted(
-        os.path.join(cases_dir, filename)
-        for filename in os.listdir(cases_dir)
-        if _matches_case_pattern(filename, pattern)
-    )
-    cases = []
-    for input_file in input_files:
-        expected_file = os.path.splitext(input_file)[0] + ".out"
-        if os.path.exists(expected_file):
-            cases.append((input_file, expected_file))
-    return cases
-
-
-def _matches_case_pattern(filename, pattern):
-    if pattern == "*.in":
-        return filename.endswith(".in")
-    import fnmatch
-    return fnmatch.fnmatch(filename, pattern)
-
-
-def _prepare_source_for_compile(file, preprocess, include_paths, is_rust, config):
-    if not preprocess:
-        return file
-
-    if is_rust:
-        rust_preprocess_config = config.get("rust_preprocess", {})
-        config_include_paths = rust_preprocess_config.get("include_paths", [])
-        preprocessor = RustPreprocessor()
-        preprocessed_code = preprocessor.preprocess(file, list(config_include_paths) + list(include_paths))
-        suffix = ".rs"
-    else:
-        cpp_preprocess_config = config.get("cpp_preprocess", {})
-        config_include_paths = cpp_preprocess_config.get("include_paths", [])
-        preprocessor = CppPreprocessor()
-        preprocessed_code = preprocessor.preprocess(file, list(config_include_paths) + list(include_paths))
-        suffix = ".cpp"
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False) as tmp:
-        tmp.write(preprocessed_code)
-        return tmp.name
-
-
-def _compile_for_suite(original_file, source_file, is_rust, config):
-    executable = tempfile.NamedTemporaryFile(delete=False, suffix='.out')
-    executable.close()
-
-    if is_rust:
-        rust_compile_config = config.get("rust_compile", {})
-        compiler_edition = rust_compile_config.get("edition", "2021")
-        compiler_flags = rust_compile_config.get("flags", [])
-        compile_cmd = ['rustc', source_file, '-o', executable.name, f'--edition={compiler_edition}'] + compiler_flags
-    else:
-        cpp_compile_config = config.get("cpp_compile", {})
-        compiler_std = cpp_compile_config.get("std", "c++17")
-        compiler_flags = cpp_compile_config.get("flags", [])
-        compile_cmd = ['g++', source_file, '-o', executable.name, f'-std={compiler_std}'] + compiler_flags
-
-    click.echo(f"Compiling {os.path.basename(original_file)}...")
-    compile_result = subprocess.run(compile_cmd, capture_output=True, text=True)
-    if compile_result.returncode != 0:
-        click.echo("❌ Compilation failed", err=True)
-        click.echo("Compiler output:", err=True)
-        click.echo(compile_result.stderr, err=True)
-        if os.path.exists(executable.name):
-            os.remove(executable.name)
-        sys.exit(1)
-
-    click.echo("✓ Compilation successful")
-    return executable.name
-
-
-def _run_suite_case(executable, input_file, expected_file, timeout):
-    with open(input_file, 'r') as f:
-        stdin_data = f.read()
-    with open(expected_file, 'r') as f:
-        expected_output = f.read()
-
-    started = time.perf_counter()
-    try:
-        run_result = subprocess.run(
-            [executable],
-            input=stdin_data,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        runtime = time.perf_counter() - started
-    except subprocess.TimeoutExpired:
-        return SuiteRunResult(
-            case=os.path.basename(input_file),
-            passed=False,
-            runtime=timeout,
-            error=f"timed out after {timeout}s",
-            output="",
-        )
-
-    if run_result.returncode != 0:
-        return SuiteRunResult(
-            case=os.path.basename(input_file),
-            passed=False,
-            runtime=runtime,
-            error=f"runtime error: {run_result.stderr.strip()}",
-            output=run_result.stdout,
-        )
-
-    passed = run_result.stdout.strip() == expected_output.strip()
-    error = "" if passed else "output differs from expected"
-    return SuiteRunResult(
-        case=os.path.basename(input_file),
-        passed=passed,
-        runtime=runtime,
-        error=error,
-        output=run_result.stdout,
-    )
-
-
-def _run_compare_pair(executable_a, executable_b, input_file, expected_file, timeout):
-    result_a = _run_suite_case(executable_a, input_file, expected_file, timeout)
-    result_b = _run_suite_case(executable_b, input_file, expected_file, timeout)
-    case = os.path.basename(input_file)
-
-    try:
-        score_a = parse_numeric_output(result_a.output)
-        score_b = parse_numeric_output(result_b.output)
-    except ValueError as exc:
-        return PairResult(
-            case=case,
-            valid=False,
-            error=str(exc),
-            score_a=None,
-            score_b=None,
-            diff=None,
-        )
-
-    return PairResult(
-        case=case,
-        valid=True,
-        error="",
-        score_a=score_a,
-        score_b=score_b,
-        diff=score_a - score_b,
-    )
 
 
 def _test_cpp(file, input_file, expected_file, preprocess, include_paths):
